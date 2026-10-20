@@ -276,7 +276,8 @@ object ArchiveExtractor {
                     }
                 }
                 if (targetApk.exists() && targetApk.length() > 0) {
-                    extractedFiles.add(targetApk)
+                    val signed = ApkSignerUtil.signAndAlignApk(targetApk)
+                    extractedFiles.add(signed)
                 }
             } else {
                 val apkEntries = mutableListOf<ZipEntry>()
@@ -309,7 +310,8 @@ object ArchiveExtractor {
                         }
                     }
                     if (targetApk.exists() && targetApk.length() > 0) {
-                        extractedFiles.add(targetApk)
+                        val signed = ApkSignerUtil.signAndAlignApk(targetApk)
+                        extractedFiles.add(signed)
                     }
                 } else {
                     onProgress(
@@ -405,7 +407,8 @@ object ArchiveExtractor {
                     }
 
                     if (targetApk.exists() && targetApk.length() > 0) {
-                        extractedFiles.add(targetApk)
+                        val signed = ApkSignerUtil.signAndAlignApk(targetApk)
+                        extractedFiles.add(signed)
                     }
                 }
 
