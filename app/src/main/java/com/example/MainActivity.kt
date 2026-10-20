@@ -107,6 +107,7 @@ class MainActivity : ComponentActivity() {
                         bottomBar = {
                             CyberBottomBar(
                                 currentTab = currentTab,
+                                isArabic = isArabic,
                                 onSelectTab = { viewModel.setTab(it) }
                             )
                         }
@@ -164,6 +165,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun CyberBottomBar(
     currentTab: Int,
+    isArabic: Boolean,
     onSelectTab: (Int) -> Unit
 ) {
     Column(
@@ -198,28 +200,28 @@ fun CyberBottomBar(
         ) {
             BottomNavItem(
                 icon = Icons.Default.Home,
-                label = "Home",
+                label = if (isArabic) "الرئيسية" else "Home",
                 isSelected = currentTab == 0,
                 onClick = { onSelectTab(0) },
                 testTag = "nav_home"
             )
             BottomNavItem(
                 icon = Icons.Default.Folder,
-                label = "Files",
+                label = if (isArabic) "الملفات" else "Files",
                 isSelected = currentTab == 1,
                 onClick = { onSelectTab(1) },
                 testTag = "nav_files"
             )
             BottomNavItem(
                 icon = Icons.Default.History,
-                label = "History",
+                label = if (isArabic) "السجل" else "History",
                 isSelected = currentTab == 2,
                 onClick = { onSelectTab(2) },
                 testTag = "nav_history"
             )
             BottomNavItem(
                 icon = Icons.Default.Settings,
-                label = "Settings",
+                label = if (isArabic) "الإعدادات" else "Settings",
                 isSelected = currentTab == 3,
                 onClick = { onSelectTab(3) },
                 testTag = "nav_settings"

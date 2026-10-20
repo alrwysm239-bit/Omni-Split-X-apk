@@ -26,9 +26,9 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -36,8 +36,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.HistoryItem
@@ -61,6 +63,7 @@ fun HistoryScreen(
     modifier: Modifier = Modifier
 ) {
     val historyList by viewModel.historyList.collectAsState()
+    val isArabic by viewModel.isArabic.collectAsState()
 
     Column(
         modifier = modifier
@@ -75,13 +78,16 @@ fun HistoryScreen(
         ) {
             Column {
                 Text(
-                    text = "Processing History",
+                    text = if (isArabic) "سجل العمليات والتحويلات" else "Processing History",
                     color = Color.White,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "${historyList.size} conversion and extraction logs",
+                    text = if (isArabic)
+                        "${historyList.size} حزمة تم تحويلها وفحصها"
+                    else
+                        "${historyList.size} conversion and extraction logs",
                     color = TextSecondary,
                     fontSize = 12.sp
                 )
@@ -116,14 +122,14 @@ fun HistoryScreen(
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = "No history records yet",
+                        text = if (isArabic) "لا توجد سجلات سابقة" else "No history records yet",
                         color = Color.White,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Extracted and audited packages will appear here",
+                        text = if (isArabic) "الحزم والملفات المحولة ستظهر هنا تلقائياً" else "Extracted and audited packages will appear here",
                         color = TextMuted,
                         fontSize = 13.sp
                     )
@@ -137,6 +143,7 @@ fun HistoryScreen(
                 items(historyList) { item ->
                     HistoryCard(
                         item = item,
+                        isArabic = isArabic,
                         onDelete = { viewModel.deleteHistoryItem(item) }
                     )
                 }
@@ -148,9 +155,10 @@ fun HistoryScreen(
 @Composable
 fun HistoryCard(
     item: HistoryItem,
+    isArabic: Boolean,
     onDelete: () -> Unit
 ) {
-    val dateStr = SimpleDateFormat("MMM dd, yyyy • HH:mm", Locale.getDefault())
+    val dateStr = SimpleDateFormat("yyyy/MM/dd • HH:mm", Locale.getDefault())
         .format(Date(item.timestamp))
     val sizeMb = item.fileSize / (1024.0 * 1024.0)
 
@@ -173,23 +181,25 @@ fun HistoryCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = item.fileName,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp
-                )
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                    Text(
+                        text = item.fileName,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                }
 
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(6.dp))
-                        .background(NeonCyan.copy(alpha = 0.15f))
-                        .border(1.dp, NeonCyan.copy(alpha = 0.35f), RoundedCornerShape(6.dp))
+                        .background(NeonGreen.copy(alpha = 0.15f))
+                        .border(1.dp, NeonGreen.copy(alpha = 0.35f), RoundedCornerShape(6.dp))
                         .padding(horizontal = 7.dp, vertical = 2.dp)
                 ) {
                     Text(
-                        text = item.fileType,
-                        color = NeonCyan,
+                        text = "APK",
+                        color = NeonGreen,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -198,12 +208,14 @@ fun HistoryCard(
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            Text(
-                text = item.packageName,
-                color = TextSecondary,
-                fontSize = 12.sp,
-                fontFamily = FontFamily.Monospace
-            )
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                Text(
+                    text = item.packageName,
+                    color = TextSecondary,
+                    fontSize = 12.sp,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
 
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -213,7 +225,7 @@ fun HistoryCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = String.format(Locale.US, "%.1f MB • %d splits", sizeMb, item.splitCount),
+                    text = String.format(Locale.US, if (isArabic) "%.1f ميجابايت • ملف APK جاهز" else "%.1f MB • Ready APK", sizeMb),
                     color = TextMuted,
                     fontSize = 11.5.sp
                 )
@@ -228,7 +240,11 @@ fun HistoryCard(
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = if (item.hasPairIp) "PairIP Found" else "PairIP Clean",
+                        text = if (item.hasPairIp) {
+                            if (isArabic) "يحتوي PairIP" else "PairIP Found"
+                        } else {
+                            if (isArabic) "تم حذف PairIP ✓" else "PairIP Clean ✓"
+                        },
                         color = if (item.hasPairIp) NeonAmber else NeonGreen,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Medium

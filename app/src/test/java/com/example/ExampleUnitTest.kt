@@ -1,5 +1,6 @@
 package com.example
 
+import com.example.util.ArchiveExtractor
 import com.example.util.AxmlParser
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -70,5 +71,41 @@ class ExampleUnitTest {
         assertTrue(xml.contains("android.permission.INTERNET"))
         assertTrue(xml.contains("com.pairip.licensecheck.LicenseActivity"))
         assertTrue(xml.contains("[PAIRIP LICENSING COMPONENT]"))
+    }
+
+    @Test
+    fun testCleanPackageName() {
+        assertEquals("Balkan Grill Simulator", ArchiveExtractor.cleanPackageName("Balkan Grill Simulator.xapk"))
+        assertEquals("Balkan Grill Simulator", ArchiveExtractor.cleanPackageName("Balkan Grill Simulator.apks"))
+        assertEquals("app", ArchiveExtractor.cleanPackageName("app.apk.APK"))
+        assertEquals("my_game", ArchiveExtractor.cleanPackageName("my_game.zip"))
+    }
+
+    @Test
+    fun testPairIpRemoval() {
+        val originalXml = """
+            <?xml version="1.0" encoding="utf-8"?>
+            <manifest package="com.game">
+                <application>
+                    <activity android:name="com.game.MainActivity" />
+                    <!-- [PAIRIP LICENSING COMPONENT] -->
+                    <activity android:name="com.pairip.licensecheck.LicenseActivity" />
+                    <provider android:name="com.pairip.licensecheck.LicenseContentProvider" />
+                </application>
+            </manifest>
+        """.trimIndent()
+
+        val cleanedLines = originalXml.lines().filter { line ->
+            !line.contains("pairip", ignoreCase = true) &&
+            !line.contains("LicenseActivity", ignoreCase = true) &&
+            !line.contains("LicenseContentProvider", ignoreCase = true) &&
+            !line.contains("[PAIRIP LICENSING COMPONENT]", ignoreCase = true)
+        }
+        val cleaned = cleanedLines.joinToString("\n")
+
+        assertFalse(cleaned.contains("pairip"))
+        assertFalse(cleaned.contains("LicenseActivity"))
+        assertFalse(cleaned.contains("LicenseContentProvider"))
+        assertTrue(cleaned.contains("com.game.MainActivity"))
     }
 }

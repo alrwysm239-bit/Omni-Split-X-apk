@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.Button
@@ -51,7 +52,9 @@ import com.example.ui.components.PairIpInspectorCard
 import com.example.ui.components.PairIpReportDialog
 import com.example.ui.components.SelectFileDashedCard
 import com.example.ui.theme.DarkBackground
+import com.example.ui.theme.NeonAmber
 import com.example.ui.theme.NeonCyan
+import com.example.ui.theme.NeonGreen
 import com.example.ui.theme.NeonMagenta
 import com.example.ui.theme.TextMuted
 import com.example.viewmodel.OmniSplitViewModel
@@ -65,10 +68,12 @@ fun HomeScreen(
     val context = LocalContext.current
     val scrollState = rememberScrollState()
 
+    val isArabic by viewModel.isArabic.collectAsState()
     val analysis by viewModel.analysis.collectAsState()
     val isAnalyzing by viewModel.isAnalyzing.collectAsState()
     val progress by viewModel.progress.collectAsState()
     val scanPairIp by viewModel.scanPairIp.collectAsState()
+    val autoRemovePairIp by viewModel.autoRemovePairIp.collectAsState()
     val showPairIpDialog by viewModel.showPairIpDialog.collectAsState()
     val selectedFileName by viewModel.selectedFileName.collectAsState()
     val selectedFileSize by viewModel.selectedFileSize.collectAsState()
@@ -110,7 +115,9 @@ fun HomeScreen(
             entries = archiveEntries,
             manifestContent = manifestContent,
             searchQuery = manifestSearchQuery,
+            isArabic = isArabic,
             onSearchChange = { viewModel.setManifestSearch(it) },
+            onRemovePairIp = { viewModel.removePairIpFromManifest() },
             onDismiss = { viewModel.closeMtExplorer() }
         )
     }
@@ -134,7 +141,9 @@ fun HomeScreen(
 
         SelectFileDashedCard(
             fileName = selectedFileName,
-            fileSizeStr = fileSizeFormatted?.let { "Size: $it / Up to 4 GB" },
+            fileSizeStr = fileSizeFormatted?.let {
+                if (isArabic) "الحجم: $it / حتى 4 جيجابايت" else "Size: $it / Up to 4 GB"
+            },
             onClick = {
                 filePicker.launch(arrayOf("*/*"))
             }
@@ -159,7 +168,7 @@ fun HomeScreen(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Load Sample XAPK Demo",
+                        text = if (isArabic) "تجربة حزمة XAPK تجريبية" else "Load Sample XAPK Demo",
                         color = NeonCyan,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold
@@ -182,7 +191,7 @@ fun HomeScreen(
                 )
                 Spacer(modifier = Modifier.width(10.dp))
                 Text(
-                    text = "Streaming and parsing archive structure...",
+                    text = if (isArabic) "جاري فحص وتدفق هيكل الأرشيف..." else "Streaming and parsing archive structure...",
                     color = TextMuted,
                     fontSize = 12.sp
                 )
@@ -190,7 +199,7 @@ fun HomeScreen(
         }
 
         // Card 2: Package Info Card
-        val pkgNameDisplay = analysis?.packageName ?: "com.example.app (Pending...)"
+        val pkgNameDisplay = analysis?.packageName ?: if (isArabic) "com.example.app (في انتظار الاختيار...)" else "com.example.app (Pending...)"
         val archDisplay = analysis?.architecture ?: "arm64-v8a / armeabi-v7a"
         val versionDisplay = analysis?.versionName ?: "v1.0.0 (Build 42)"
         val actualSizeDisplay = if (selectedFileSize > 0) {
@@ -217,6 +226,25 @@ fun HomeScreen(
             hasPairIp = analysis?.pairIpReport?.hasPairIp ?: false
         )
 
+        // Quick PairIP Strip Button if PairIP is detected
+        if (analysis?.pairIpReport?.hasPairIp == true) {
+            OutlinedButton(
+                onClick = { viewModel.removePairIpFromManifest() },
+                modifier = Modifier.fillMaxWidth().height(44.dp),
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.outlinedButtonColors(containerColor = NeonAmber.copy(alpha = 0.15f))
+            ) {
+                Icon(Icons.Default.DeleteSweep, contentDescription = null, tint = NeonAmber, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = if (isArabic) "حذف كود PairIP تلقائياً من الـ Manifest الآن" else "Strip PairIP Codes from Manifest Now",
+                    color = NeonAmber,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.5.sp
+                )
+            }
+        }
+
         // Progress Card (when extracting)
         progress?.let { p ->
             ExtractionProgressCard(
@@ -225,10 +253,9 @@ fun HomeScreen(
             )
         }
 
-        // Primary Button: EXTRACT SPLIT APKS / CONVERT TO APK WEBSITE
-        val isSingleApk = selectedFileName?.endsWith(".apk", ignoreCase = true) == true
+        // Primary Button: EXTRACT TO DIRECT APK FILE
         CyberPrimaryGradientButton(
-            text = if (isSingleApk) "CONVERT & SAVE TO APK WEBSITE" else "EXTRACT SPLIT APKS",
+            text = if (isArabic) "تحويل واستخراج إلى ملف APK جاهز" else "CONVERT TO STANDALONE APK",
             onClick = { viewModel.startExtraction() },
             enabled = selectedFileName != null,
             isLoading = progress != null && !(progress?.isComplete ?: false)
@@ -236,7 +263,7 @@ fun HomeScreen(
 
         // Secondary Button: APK EXPLORER (MT STYLE)
         CyberSecondaryButton(
-            text = "APK EXPLORER (MT STYLE)",
+            text = if (isArabic) "مستكشف الحزم ومحرر المانفيست (نمط MT Manager)" else "APK EXPLORER (MT STYLE)",
             icon = {
                 Icon(
                     imageVector = Icons.Default.Code,
@@ -252,7 +279,7 @@ fun HomeScreen(
 
         // Tertiary Button: PAIRIP INSPECTOR
         CyberSecondaryButton(
-            text = "PAIRIP INSPECTOR",
+            text = if (isArabic) "تقرير تشخيص PAIRIP" else "PAIRIP INSPECTOR",
             icon = {
                 Icon(
                     imageVector = Icons.Default.Security,
@@ -266,9 +293,9 @@ fun HomeScreen(
             }
         )
 
-        // Output Location Row pointing to Downloads/APK Website
+        // Output Location Row
         OutputLocationCard(
-            path = "/Downloads/APK Website"
+            path = if (isArabic) "مجلد الحفظ: /Downloads/APK Website" else "Output Location: /Downloads/APK Website"
         )
 
         Spacer(modifier = Modifier.height(16.dp))

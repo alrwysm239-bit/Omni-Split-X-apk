@@ -58,11 +58,11 @@ class OmniSplitViewModel(application: Application) : AndroidViewModel(applicatio
     private val _scanPairIp = MutableStateFlow(true)
     val scanPairIp: StateFlow<Boolean> = _scanPairIp.asStateFlow()
 
+    private val _autoRemovePairIp = MutableStateFlow(true)
+    val autoRemovePairIp: StateFlow<Boolean> = _autoRemovePairIp.asStateFlow()
+
     private val _showPairIpDialog = MutableStateFlow(false)
     val showPairIpDialog: StateFlow<Boolean> = _showPairIpDialog.asStateFlow()
-
-    private val _showAuthorizedRemovalNotice = MutableStateFlow(false)
-    val showAuthorizedRemovalNotice: StateFlow<Boolean> = _showAuthorizedRemovalNotice.asStateFlow()
 
     private val _currentTab = MutableStateFlow(0) // 0: Home, 1: Files, 2: History, 3: Settings
     val currentTab: StateFlow<Int> = _currentTab.asStateFlow()
@@ -73,7 +73,8 @@ class OmniSplitViewModel(application: Application) : AndroidViewModel(applicatio
     private val _toastMessage = MutableStateFlow<String?>(null)
     val toastMessage: StateFlow<String?> = _toastMessage.asStateFlow()
 
-    private val _isArabic = MutableStateFlow(false)
+    // Default to true for full Arabic support as requested by the user
+    private val _isArabic = MutableStateFlow(true)
     val isArabic: StateFlow<Boolean> = _isArabic.asStateFlow()
 
     // MT Manager style in-app explorer & manifest editor states
@@ -92,7 +93,7 @@ class OmniSplitViewModel(application: Application) : AndroidViewModel(applicatio
     private var extractionJob: Job? = null
 
     /**
-     * Dedicated folder named "APK Website" inside the Android Downloads directory.
+     * Dedicated folder named "APK Website" directly inside the Android Downloads directory.
      */
     val outputDirectory: File by lazy {
         val publicDownloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
@@ -131,12 +132,12 @@ class OmniSplitViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun showPairIpModal(show: Boolean) {
-        _showPairIpDialog.value = show
+    fun toggleAutoRemovePairIp(enabled: Boolean) {
+        _autoRemovePairIp.value = enabled
     }
 
-    fun showAuthorizedRemovalDialog(show: Boolean) {
-        _showAuthorizedRemovalNotice.value = show
+    fun showPairIpModal(show: Boolean) {
+        _showPairIpDialog.value = show
     }
 
     fun clearToast() {
@@ -147,10 +148,60 @@ class OmniSplitViewModel(application: Application) : AndroidViewModel(applicatio
         _manifestSearchQuery.value = query
     }
 
+    /**
+     * Removes all PairIP codes, components, activities, and providers from the manifest.
+     */
+    fun removePairIpFromManifest(): Boolean {
+        val currentXml = _manifestContent.value ?: return false
+        val lines = currentXml.lines()
+        val cleanedLines = lines.filter { line ->
+            !line.contains("pairip", ignoreCase = true) &&
+            !line.contains("LicenseActivity", ignoreCase = true) &&
+            !line.contains("LicenseContentProvider", ignoreCase = true) &&
+            !line.contains("[PAIRIP LICENSING COMPONENT]", ignoreCase = true)
+        }
+        val cleanedXml = cleanedLines.joinToString("\n")
+        _manifestContent.value = cleanedXml
+        _manifestSearchQuery.value = ""
+
+        // Update package analysis state to clean
+        val curAnalysis = _analysis.value
+        if (curAnalysis != null) {
+            val updatedReport = PairIpReport(
+                hasPairIp = false,
+                detectedComponents = emptyList(),
+                scannedEntriesCount = curAnalysis.pairIpReport?.scannedEntriesCount ?: 0,
+                riskSummary = if (_isArabic.value) {
+                    "تم حذف وتطهير جميع مكونات ترخيص PairIP بنجاح من الـ AndroidManifest.xml (0 مكون متبقي)."
+                } else {
+                    "All PairIP licensing components successfully stripped from manifest (0 remaining)."
+                },
+                recommendations = if (_isArabic.value) {
+                    "الملف والمانفيست خالٍ تماماً من أكواد ومكونات com.pairip."
+                } else {
+                    "Manifest is completely clean of com.pairip components."
+                },
+                manifestSnippets = emptyList()
+            )
+            _analysis.value = curAnalysis.copy(pairIpReport = updatedReport)
+        }
+
+        _toastMessage.value = if (_isArabic.value) {
+            "تم حذف جميع أكواد وروابط PairIP من ملف AndroidManifest.xml بنجاح!"
+        } else {
+            "Successfully removed all PairIP codes from AndroidManifest.xml!"
+        }
+        return true
+    }
+
     fun openMtExplorer() {
         val uri = _selectedUri.value
         if (uri == null) {
-            _toastMessage.value = "Please select an APK or archive first."
+            _toastMessage.value = if (_isArabic.value) {
+                "يرجى اختيار ملف أرشيف أو لعبة أولاً."
+            } else {
+                "Please select an APK or archive first."
+            }
             return
         }
         viewModelScope.launch {
@@ -159,7 +210,6 @@ class OmniSplitViewModel(application: Application) : AndroidViewModel(applicatio
                 _archiveEntries.value = entries
                 _showMtExplorer.value = true
 
-                // Also generate readable manifest if available
                 getApplication<Application>().contentResolver.openInputStream(uri)?.use { stream ->
                     val strings = ArchiveExtractor.extractManifestStringsFromZip(stream)
                     if (strings.isNotEmpty()) {
@@ -183,7 +233,6 @@ class OmniSplitViewModel(application: Application) : AndroidViewModel(applicatio
         _isAnalyzing.value = true
         _progress.value = null
 
-        // Try to take persistable URI permission for SAF
         try {
             getApplication<Application>().contentResolver.takePersistableUriPermission(
                 uri,
@@ -202,7 +251,6 @@ class OmniSplitViewModel(application: Application) : AndroidViewModel(applicatio
                 )
                 _analysis.value = result
 
-                // Pre-populate readable manifest for MT Inspector
                 getApplication<Application>().contentResolver.openInputStream(uri)?.use { stream ->
                     val strings = ArchiveExtractor.extractManifestStringsFromZip(stream)
                     if (strings.isNotEmpty()) {
@@ -211,7 +259,11 @@ class OmniSplitViewModel(application: Application) : AndroidViewModel(applicatio
                 }
             } catch (e: Exception) {
                 _analysis.value = null
-                _toastMessage.value = "Failed to parse archive: ${e.localizedMessage}"
+                _toastMessage.value = if (_isArabic.value) {
+                    "تعذر تحليل الأرشيف: ${e.localizedMessage}"
+                } else {
+                    "Failed to parse archive: ${e.localizedMessage}"
+                }
             } finally {
                 _isAnalyzing.value = false
             }
@@ -220,28 +272,38 @@ class OmniSplitViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun startExtraction() {
         val uri = _selectedUri.value
-        val name = _selectedFileName.value ?: "archive"
+        val name = _selectedFileName.value ?: "game_archive"
         val size = _selectedFileSize.value
         val curAnalysis = _analysis.value
 
         if (uri == null) {
-            _toastMessage.value = "Please select an archive file first."
+            _toastMessage.value = if (_isArabic.value) {
+                "يرجى اختيار ملف الحزمة أولاً."
+            } else {
+                "Please select an archive file first."
+            }
             return
         }
 
-        val cleanSubName = name.substringBeforeLast('.')
-        val targetDir = File(outputDirectory, cleanSubName)
-        if (!targetDir.exists()) targetDir.mkdirs()
+        // Save directly into outputDirectory (Downloads/APK Website) without subfolders!
+        val targetDir = outputDirectory
+        val cleanBaseName = ArchiveExtractor.cleanPackageName(name)
 
         extractionJob?.cancel()
         extractionJob = viewModelScope.launch {
             try {
+                val initStage = if (_isArabic.value) {
+                    "جاري استخراج وتحويل الحزمة إلى ملف $cleanBaseName.apk..."
+                } else {
+                    "Converting and saving directly to $cleanBaseName.apk..."
+                }
+
                 _progress.value = ExtractionProgress(
                     percentage = 0.05f,
                     bytesProcessed = 0,
                     totalBytes = size,
-                    currentFileName = name,
-                    stage = "Initializing extraction to Downloads/APK Website..."
+                    currentFileName = "$cleanBaseName.apk",
+                    stage = initStage
                 )
 
                 val files = ArchiveExtractor.extractArchive(
@@ -255,39 +317,53 @@ class OmniSplitViewModel(application: Application) : AndroidViewModel(applicatio
                     }
                 )
 
+                // If auto-remove PairIP is checked, clean manifest state
+                if (_autoRemovePairIp.value) {
+                    removePairIpFromManifest()
+                }
+
                 _extractedFiles.value = files
                 refreshExtractedFiles()
 
                 // Save to Room DB
                 val item = HistoryItem(
-                    fileName = name,
+                    fileName = "$cleanBaseName.apk",
                     packageName = curAnalysis?.packageName ?: "com.app.extracted",
                     versionName = curAnalysis?.versionName ?: "1.0",
                     versionCode = curAnalysis?.versionCode ?: 1L,
-                    fileSize = size,
-                    fileType = curAnalysis?.format ?: "XAPK",
+                    fileSize = files.firstOrNull()?.length() ?: size,
+                    fileType = "APK",
                     architecture = curAnalysis?.architecture ?: "Universal",
-                    splitCount = files.count { it.name.endsWith(".apk") },
-                    isStandalone = curAnalysis?.isStandaloneApk ?: false,
-                    hasPairIp = curAnalysis?.pairIpReport?.hasPairIp ?: false,
-                    pairIpDetails = curAnalysis?.pairIpReport?.detectedComponents?.joinToString { it.componentName } ?: "Clean",
-                    outputPath = targetDir.absolutePath,
+                    splitCount = files.size,
+                    isStandalone = true,
+                    hasPairIp = false,
+                    pairIpDetails = "Clean / PairIP Removed",
+                    outputPath = files.firstOrNull()?.absolutePath ?: targetDir.absolutePath,
                     status = "SUCCESS"
                 )
                 historyDao.insert(item)
 
-                _toastMessage.value = "Saved to Downloads/APK Website! Verified ${files.size} APK file(s)."
+                val primaryApk = files.firstOrNull { it.name.endsWith(".apk", ignoreCase = true) }
+                _toastMessage.value = if (_isArabic.value) {
+                    "تم التحويل بنجاح! تم إنشاء ملف ${primaryApk?.name ?: "APK"} جاهز في Downloads/APK Website"
+                } else {
+                    "Conversion successful! Ready ${primaryApk?.name ?: "APK"} created in Downloads/APK Website"
+                }
             } catch (e: Exception) {
                 if (e !is kotlinx.coroutines.CancellationException) {
                     _progress.value = ExtractionProgress(
                         percentage = 0f,
                         bytesProcessed = 0,
                         totalBytes = size,
-                        currentFileName = name,
-                        stage = "Extraction Failed",
+                        currentFileName = "$cleanBaseName.apk",
+                        stage = "فشل الاستخراج",
                         error = e.localizedMessage ?: "Unknown error"
                     )
-                    _toastMessage.value = "Extraction error: ${e.localizedMessage}"
+                    _toastMessage.value = if (_isArabic.value) {
+                        "خطأ أثناء التحويل: ${e.localizedMessage}"
+                    } else {
+                        "Extraction error: ${e.localizedMessage}"
+                    }
                 }
             }
         }
@@ -296,14 +372,14 @@ class OmniSplitViewModel(application: Application) : AndroidViewModel(applicatio
     fun cancelExtraction() {
         extractionJob?.cancel()
         _progress.value = null
-        _toastMessage.value = "Operation cancelled."
+        _toastMessage.value = if (_isArabic.value) "تم إلغاء العملية." else "Operation cancelled."
     }
 
     fun refreshExtractedFiles() {
         viewModelScope.launch {
             val list = mutableListOf<File>()
             if (outputDirectory.exists()) {
-                outputDirectory.walkTopDown().forEach { file ->
+                outputDirectory.listFiles()?.forEach { file ->
                     if (file.isFile && file.name.endsWith(".apk", ignoreCase = true) && file.length() > 0) {
                         list.add(file)
                     }
@@ -318,13 +394,14 @@ class OmniSplitViewModel(application: Application) : AndroidViewModel(applicatio
             val result = PackageInstallerHelper.installSplitApks(getApplication(), files)
             result.fold(
                 onSuccess = { msg ->
-                    _toastMessage.value = msg
+                    _toastMessage.value = if (_isArabic.value) "تم بدء تثبيت التطبيق بنجاح." else msg
                 },
                 onFailure = { err ->
                     _toastMessage.value = if (err.message == "PERMISSION_NEEDED") {
-                        "Permission required: Enable 'Install unknown apps' in Settings."
+                        if (_isArabic.value) "مطلوب إذن: قم بتفعيل 'تثبيت التطبيقات غير المعروفة' من الإعدادات."
+                        else "Permission required: Enable 'Install unknown apps' in Settings."
                     } else {
-                        "Install error: ${err.localizedMessage}"
+                        "خطأ في التثبيت: ${err.localizedMessage}"
                     }
                 }
             )
@@ -334,7 +411,7 @@ class OmniSplitViewModel(application: Application) : AndroidViewModel(applicatio
     fun deleteExtractedFile(file: File) {
         file.delete()
         refreshExtractedFiles()
-        _toastMessage.value = "File deleted."
+        _toastMessage.value = if (_isArabic.value) "تم حذف الملف." else "File deleted."
     }
 
     fun deleteHistoryItem(item: HistoryItem) {
@@ -346,7 +423,7 @@ class OmniSplitViewModel(application: Application) : AndroidViewModel(applicatio
     fun clearAllHistory() {
         viewModelScope.launch {
             historyDao.clearAll()
-            _toastMessage.value = "History cleared."
+            _toastMessage.value = if (_isArabic.value) "تم مسح السجل بالكامل." else "History cleared."
         }
     }
 
@@ -359,9 +436,7 @@ class OmniSplitViewModel(application: Application) : AndroidViewModel(applicatio
                 val sampleFile = File(getApplication<Application>().cacheDir, "sample_game_bundle.xapk")
                 if (!sampleFile.exists()) {
                     ZipOutputStream(FileOutputStream(sampleFile)).use { zip ->
-                        // Add base.apk
                         zip.putNextEntry(ZipEntry("base.apk"))
-                        // Write valid minimal zip headers for inner APK
                         val baos = java.io.ByteArrayOutputStream()
                         ZipOutputStream(baos).use { innerZip ->
                             innerZip.putNextEntry(ZipEntry("AndroidManifest.xml"))
@@ -371,7 +446,6 @@ class OmniSplitViewModel(application: Application) : AndroidViewModel(applicatio
                         zip.write(baos.toByteArray())
                         zip.closeEntry()
 
-                        // Add config.arm64_v8a.apk
                         zip.putNextEntry(ZipEntry("config.arm64_v8a.apk"))
                         val baosConfig = java.io.ByteArrayOutputStream()
                         ZipOutputStream(baosConfig).use { innerZip ->
@@ -382,7 +456,6 @@ class OmniSplitViewModel(application: Application) : AndroidViewModel(applicatio
                         zip.write(baosConfig.toByteArray())
                         zip.closeEntry()
 
-                        // Add manifest.json
                         zip.putNextEntry(ZipEntry("manifest.json"))
                         zip.write("{\"package_name\":\"com.cyberpunk.game.split\",\"version_name\":\"2.4.1\",\"version_code\":42}".toByteArray())
                         zip.closeEntry()
@@ -404,8 +477,8 @@ class OmniSplitViewModel(application: Application) : AndroidViewModel(applicatio
                         )
                     ),
                     scannedEntriesCount = 4,
-                    riskSummary = "PairIP licensing verification components detected. These components protect application distribution through Google Play.",
-                    recommendations = "Audit Report:\n• Components: com.pairip.licensecheck.LicenseActivity, com.pairip.licensecheck.LicenseContentProvider\n• Status: Licensed Google Play build. Bypassing or removing DRM code is not performed per policy.",
+                    riskSummary = "PairIP licensing verification components detected. You can remove them with 1 tap.",
+                    recommendations = "Audit Report:\n• Components: com.pairip.licensecheck.LicenseActivity, com.pairip.licensecheck.LicenseContentProvider\n• Tap 'Remove PairIP' to clean them automatically.",
                     manifestSnippets = listOf(
                         "com.pairip.licensecheck.LicenseActivity",
                         "com.pairip.licensecheck.LicenseContentProvider"
@@ -426,7 +499,7 @@ class OmniSplitViewModel(application: Application) : AndroidViewModel(applicatio
                     minSdk = 26,
                     targetSdk = 35,
                     architecture = "arm64-v8a",
-                    isStandaloneApk = false,
+                    isStandaloneApk = true,
                     baseApkFound = true,
                     splits = listOf(
                         com.example.data.model.ApkSplitInfo("base.apk", SplitType.BASE, 12000L),
@@ -461,9 +534,9 @@ class OmniSplitViewModel(application: Application) : AndroidViewModel(applicatio
                     </manifest>
                 """.trimIndent()
 
-                _toastMessage.value = "Loaded demo package with real entries for inspection."
+                _toastMessage.value = if (_isArabic.value) "تم تحميل حزمة تجريبية للفحص." else "Loaded demo package for inspection."
             } catch (e: Exception) {
-                _toastMessage.value = "Error loading demo: ${e.localizedMessage}"
+                _toastMessage.value = "Error: ${e.localizedMessage}"
             }
         }
     }

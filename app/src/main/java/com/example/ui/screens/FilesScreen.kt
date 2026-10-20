@@ -30,6 +30,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -38,8 +39,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.components.CyberPrimaryGradientButton
@@ -66,6 +69,7 @@ fun FilesScreen(
 ) {
     val context = LocalContext.current
     val files by viewModel.extractedFiles.collectAsState()
+    val isArabic by viewModel.isArabic.collectAsState()
 
     Column(
         modifier = modifier
@@ -80,13 +84,16 @@ fun FilesScreen(
         ) {
             Column {
                 Text(
-                    text = "Extracted Files & Splits",
+                    text = if (isArabic) "ملفات الـ APK الجاهزة للتثبيت" else "Extracted APK Files",
                     color = Color.White,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "${files.size} APK file(s) in /Downloads/APK Website",
+                    text = if (isArabic)
+                        "${files.size} ملف APK في /Downloads/APK Website"
+                    else
+                        "${files.size} APK file(s) in /Downloads/APK Website",
                     color = TextSecondary,
                     fontSize = 12.sp
                 )
@@ -105,7 +112,7 @@ fun FilesScreen(
 
         if (files.isNotEmpty()) {
             CyberPrimaryGradientButton(
-                text = "INSTALL ALL SPLITS ATOMICALLY",
+                text = if (isArabic) "تثبيت الحزمة بالكامل" else "INSTALL ALL SPLITS ATOMICALLY",
                 onClick = { viewModel.installExtractedApks(files) },
                 modifier = Modifier.padding(bottom = 12.dp)
             )
@@ -127,14 +134,14 @@ fun FilesScreen(
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = "No extracted APK files yet",
+                        text = if (isArabic) "لا توجد ملفات APK مستخرجة بعد" else "No extracted APK files yet",
                         color = Color.White,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Select an XAPK, APKS, or ZIP archive to extract",
+                        text = if (isArabic) "اختر ملف XAPK أو APKS أو ZIP للبدء بالتحويل إلى APK" else "Select an XAPK, APKS, or ZIP archive to extract",
                         color = TextMuted,
                         fontSize = 13.sp
                     )
@@ -148,6 +155,7 @@ fun FilesScreen(
                 items(files) { file ->
                     ExtractedFileCard(
                         file = file,
+                        isArabic = isArabic,
                         onInstall = {
                             PackageInstallerHelper.installSingleApk(context, file)
                         },
@@ -167,14 +175,15 @@ fun FilesScreen(
 @Composable
 fun ExtractedFileCard(
     file: File,
+    isArabic: Boolean,
     onInstall: () -> Unit,
     onShare: () -> Unit,
     onDelete: () -> Unit
 ) {
     val name = file.name
     val sizeMb = file.length() / (1024.0 * 1024.0)
-    val isBase = name.contains("base", ignoreCase = true)
-    val isStandalone = name.contains("standalone", ignoreCase = true)
+    val isBase = name.contains("base", ignoreCase = true) || !name.contains("_")
+    val isStandalone = true
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -198,26 +207,21 @@ fun ExtractedFileCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = name,
-                    color = Color.White,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 13.5.sp,
-                    fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.weight(1f)
-                )
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                    Text(
+                        text = name,
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.5.sp,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
 
-                // Split type tag
-                val badgeColor = when {
-                    isStandalone -> NeonGreen
-                    isBase -> NeonCyan
-                    else -> NeonMagenta
-                }
-                val badgeText = when {
-                    isStandalone -> "STANDALONE"
-                    isBase -> "BASE APK"
-                    else -> "CONFIG SPLIT"
-                }
+                Spacer(modifier = Modifier.width(8.dp))
+
+                val badgeColor = NeonGreen
+                val badgeText = if (isArabic) "APK جاهز للتثبيت" else "STANDALONE APK"
 
                 Box(
                     modifier = Modifier
@@ -238,7 +242,7 @@ fun ExtractedFileCard(
             Spacer(modifier = Modifier.height(6.dp))
 
             Text(
-                text = String.format(Locale.US, "Size: %.2f MB", sizeMb),
+                text = String.format(Locale.US, if (isArabic) "الحجم: %.2f ميجابايت" else "Size: %.2f MB", sizeMb),
                 color = TextSecondary,
                 fontSize = 12.sp
             )
@@ -283,7 +287,12 @@ fun ExtractedFileCard(
                         modifier = Modifier.size(14.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Install", color = NeonCyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        if (isArabic) "تثبيت APK" else "Install",
+                        color = NeonCyan,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }
