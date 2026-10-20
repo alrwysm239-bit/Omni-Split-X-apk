@@ -317,4 +317,53 @@ object AxmlParser {
         sb.append("</manifest>\n")
         return sb.toString()
     }
+
+    /**
+     * Sanitizes binary AndroidManifest.xml (AXML) for merged APKs by neutralizing
+     * split declarations (such as isSplitRequired and com.android.vending.splits).
+     * Because target strings have identical lengths, offsets and chunk lengths remain 100% valid.
+     */
+    fun sanitizeSplitManifest(manifestBytes: ByteArray): ByteArray {
+        val result = manifestBytes.copyOf()
+        val replacements = listOf(
+            "isSplitRequired" to "isSplitDisabled",
+            "isFeatureSplit" to "isFeatureNoSpl",
+            "isolatedSplits" to "isolatedNoSpl",
+            "com.android.vending.splits" to "com.android.disabled.splits"
+        )
+
+        for ((target, replacement) in replacements) {
+            // 1. Check and replace UTF-8 sequence
+            val targetUtf8 = target.toByteArray(Charsets.UTF_8)
+            val replaceUtf8 = replacement.toByteArray(Charsets.UTF_8)
+            replaceSequence(result, targetUtf8, replaceUtf8)
+
+            // 2. Check and replace UTF-16LE sequence
+            val targetUtf16 = target.toByteArray(Charsets.UTF_16LE)
+            val replaceUtf16 = replacement.toByteArray(Charsets.UTF_16LE)
+            replaceSequence(result, targetUtf16, replaceUtf16)
+        }
+        return result
+    }
+
+    private fun replaceSequence(bytes: ByteArray, target: ByteArray, replacement: ByteArray) {
+        if (target.isEmpty() || target.size != replacement.size || bytes.size < target.size) return
+        var i = 0
+        while (i <= bytes.size - target.size) {
+            var match = true
+            for (j in target.indices) {
+                if (bytes[i + j] != target[j]) {
+                    match = false
+                    break
+                }
+            }
+            if (match) {
+                System.arraycopy(replacement, 0, bytes, i, replacement.size)
+                i += target.size
+            } else {
+                i++
+            }
+        }
+    }
 }
+

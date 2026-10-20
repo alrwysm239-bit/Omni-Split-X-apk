@@ -52,6 +52,7 @@ import com.example.ui.components.PairIpInspectorCard
 import com.example.ui.components.PairIpReportDialog
 import com.example.ui.components.SelectFileDashedCard
 import com.example.ui.theme.DarkBackground
+import com.example.ui.theme.DarkSurface
 import com.example.ui.theme.NeonAmber
 import com.example.ui.theme.NeonCyan
 import com.example.ui.theme.NeonGreen
@@ -250,6 +251,49 @@ fun HomeScreen(
             ExtractionProgressCard(
                 progress = p,
                 onCancel = { viewModel.cancelExtraction() }
+            )
+        }
+
+        // Signing & ZipAlign Status Badge
+        val signingConfig by viewModel.signingConfig.collectAsState()
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(DarkSurface, RoundedCornerShape(10.dp))
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Security,
+                    contentDescription = null,
+                    tint = NeonGreen,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                val signText = if (signingConfig.isAutoSigning) {
+                    if (isArabic) "التوقيع التلقائي: v1, v2, v3 + محاذاة ZipAlign 4B/4KB"
+                    else "Auto-Sign: v1, v2, v3 + 4B/4KB ZipAlign"
+                } else {
+                    val activeSchemes = mutableListOf<String>()
+                    if (signingConfig.v1Enabled) activeSchemes.add("v1")
+                    if (signingConfig.v2Enabled) activeSchemes.add("v2")
+                    if (signingConfig.v3Enabled) activeSchemes.add("v3")
+                    if (signingConfig.v4Enabled) activeSchemes.add("v4")
+                    (if (isArabic) "التوقيع اليدوي: " else "Manual Sign: ") + activeSchemes.joinToString(", ")
+                }
+                Text(
+                    text = signText,
+                    color = NeonGreen,
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+            Text(
+                text = if (signingConfig.useCustomKeystore) (if (isArabic) "مفتاح مخصص" else "Custom Key") else (if (isArabic) "مفتاح TestKey" else "AOSP TestKey"),
+                color = TextMuted,
+                fontSize = 11.sp
             )
         }
 

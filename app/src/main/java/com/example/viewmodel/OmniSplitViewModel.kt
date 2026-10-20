@@ -12,6 +12,7 @@ import com.example.data.model.PackageAnalysis
 import com.example.data.model.PairIpComponent
 import com.example.data.model.PairIpReport
 import com.example.data.model.SplitType
+import com.example.data.model.SigningConfig
 import com.example.util.ArchiveEntryItem
 import com.example.util.ArchiveExtractor
 import com.example.util.AxmlParser
@@ -90,6 +91,9 @@ class OmniSplitViewModel(application: Application) : AndroidViewModel(applicatio
     private val _manifestSearchQuery = MutableStateFlow("")
     val manifestSearchQuery: StateFlow<String> = _manifestSearchQuery.asStateFlow()
 
+    private val _signingConfig = MutableStateFlow(SigningConfig())
+    val signingConfig: StateFlow<SigningConfig> = _signingConfig.asStateFlow()
+
     private var extractionJob: Job? = null
 
     /**
@@ -138,6 +142,46 @@ class OmniSplitViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun showPairIpModal(show: Boolean) {
         _showPairIpDialog.value = show
+    }
+
+    fun updateSigningConfig(config: SigningConfig) {
+        _signingConfig.value = config
+    }
+
+    fun setAutoSigning(enabled: Boolean) {
+        _signingConfig.value = _signingConfig.value.copy(isAutoSigning = enabled)
+    }
+
+    fun setSchemeV1(enabled: Boolean) {
+        _signingConfig.value = _signingConfig.value.copy(v1Enabled = enabled)
+    }
+
+    fun setSchemeV2(enabled: Boolean) {
+        _signingConfig.value = _signingConfig.value.copy(v2Enabled = enabled)
+    }
+
+    fun setSchemeV3(enabled: Boolean) {
+        _signingConfig.value = _signingConfig.value.copy(v3Enabled = enabled)
+    }
+
+    fun setSchemeV4(enabled: Boolean) {
+        _signingConfig.value = _signingConfig.value.copy(v4Enabled = enabled)
+    }
+
+    fun setCustomKeystore(
+        useCustom: Boolean,
+        path: String? = null,
+        storePass: String = "",
+        alias: String = "",
+        keyPass: String = ""
+    ) {
+        _signingConfig.value = _signingConfig.value.copy(
+            useCustomKeystore = useCustom,
+            customKeystorePath = path ?: _signingConfig.value.customKeystorePath,
+            keystorePassword = storePass,
+            keyAlias = alias,
+            keyPassword = keyPass
+        )
     }
 
     fun clearToast() {
@@ -312,6 +356,7 @@ class OmniSplitViewModel(application: Application) : AndroidViewModel(applicatio
                     fileName = name,
                     totalBytes = size,
                     destinationDir = targetDir,
+                    signingConfig = _signingConfig.value,
                     onProgress = { p ->
                         _progress.value = p
                     }

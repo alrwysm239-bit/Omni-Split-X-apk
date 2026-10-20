@@ -57,6 +57,7 @@ fun SettingsScreen(
     val scrollState = rememberScrollState()
     val scanPairIp by viewModel.scanPairIp.collectAsState()
     val isArabic by viewModel.isArabic.collectAsState()
+    val signingConfig by viewModel.signingConfig.collectAsState()
     var storageGuardEnabled by remember { mutableStateOf(true) }
 
     Column(
@@ -75,14 +76,187 @@ fun SettingsScreen(
         )
         Text(
             text = if (isArabic)
-                "تخصيص مخزن فك الضغط، الحماية وسعة التخزين، وفحص PairIP"
+                "تخصيص محرك التوقيع، فحص PairIP، ومحاذاة ZipAlign لتفادي خطأ الحزمة غير الصالحة"
             else
-                "Optimize decompression buffers, safety guards, and diagnostics",
+                "Configure APK Signing schemes, ZipAlign 4-byte engine, and PairIP removal",
             color = TextSecondary,
             fontSize = 12.sp
         )
 
         Spacer(modifier = Modifier.height(4.dp))
+
+        // Preference Card 0: MT Manager Style APK Signing & ZipAlign Engine
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(14.dp),
+            colors = CardDefaults.cardColors(containerColor = DarkSurface),
+            border = CardDefaults.outlinedCardBorder().copy(
+                brush = Brush.horizontalGradient(listOf(NeonCyan.copy(alpha = 0.5f), DarkBorder)),
+                width = 1.dp
+            )
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Security,
+                        contentDescription = null,
+                        tint = NeonCyan,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = if (isArabic) "محرك التوقيع والمحاذاة (MT Manager Style)" else "APK Signing & ZipAlign Engine",
+                            color = Color.White,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = if (isArabic)
+                                "محاذاة 4 بايت / 4KB مع خطط التوقيع v1, v2, v3 لمنع مشكلة الحزمة غير الصالحة"
+                            else
+                                "4-byte & 4KB ZipAlign with Schemes v1-v4 for 100% Android install success",
+                            color = TextSecondary,
+                            fontSize = 11.5.sp
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = DarkBorder, thickness = 0.8.dp)
+
+                SettingsSwitchRow(
+                    icon = Icons.Default.Speed,
+                    title = if (isArabic) "التوقيع التلقائي الذكي (مستحسن)" else "Automatic Signing (Recommended)",
+                    subtitle = if (isArabic)
+                        "تطبيق تلقائي لخطط v1 (JAR) و v2 و v3 مع محاذاة ZipAlign كاملة ومفتاح AOSP TestKey"
+                    else
+                        "Auto-detects and applies v1 (JAR), v2, and v3 schemes with embedded TestKey",
+                    checked = signingConfig.isAutoSigning,
+                    onCheckedChange = { viewModel.setAutoSigning(it) }
+                )
+
+                if (!signingConfig.isAutoSigning) {
+                    HorizontalDivider(color = DarkBorder, thickness = 0.8.dp)
+
+                    Text(
+                        text = if (isArabic) "مخططات التوقيع اليدوية (Manual Schemes):" else "Manual Scheme Selection:",
+                        color = NeonCyan,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        SigningSchemeCheckbox(
+                            title = "Scheme V1 (JAR Signature)",
+                            subtitle = if (isArabic) "توقيع قديم متوافق مع Android 5.0+" else "Legacy JAR signature for Android 5.0+",
+                            checked = signingConfig.v1Enabled,
+                            onCheckedChange = { viewModel.setSchemeV1(it) }
+                        )
+
+                        SigningSchemeCheckbox(
+                            title = "Scheme V2 (Full APK Signature)",
+                            subtitle = if (isArabic) "إلزامي لنظام Android 11+ ويمنع خطأ الحزمة غير الصالحة" else "Full APK signature (Mandatory on Android 11+)",
+                            checked = signingConfig.v2Enabled,
+                            onCheckedChange = { viewModel.setSchemeV2(it) }
+                        )
+
+                        SigningSchemeCheckbox(
+                            title = "Scheme V3 (Key Rotation Scheme)",
+                            subtitle = if (isArabic) "دعم تدوير المفاتيح لنظام Android 9.0+" else "Key rotation & SDK version targeting (Android 9.0+)",
+                            checked = signingConfig.v3Enabled,
+                            onCheckedChange = { viewModel.setSchemeV3(it) }
+                        )
+
+                        SigningSchemeCheckbox(
+                            title = "Scheme V4 (Incremental .idsig)",
+                            subtitle = if (isArabic) "توليد ملف .idsig للتثبيت التدريجي لنظام Android 11+" else "Generates .idsig file for incremental installs (Android 11+)",
+                            checked = signingConfig.v4Enabled,
+                            onCheckedChange = { viewModel.setSchemeV4(it) }
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = DarkBorder, thickness = 0.8.dp)
+
+                // Keystore Selection
+                SettingsSwitchRow(
+                    icon = Icons.Default.Info,
+                    title = if (isArabic) "استخدام مفتاح مخصص (Custom Keystore)" else "Use Custom Keystore (.jks / .p12)",
+                    subtitle = if (isArabic)
+                        "استيراد مفتاح خاص بك بدلاً من مفتاح AOSP TestKey الافتراضي"
+                    else
+                        "Specify custom .jks or .keystore file instead of standard AOSP TestKey",
+                    checked = signingConfig.useCustomKeystore,
+                    onCheckedChange = { viewModel.setCustomKeystore(it) }
+                )
+
+                if (signingConfig.useCustomKeystore) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(DarkBackground, RoundedCornerShape(8.dp))
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = if (isArabic) "بيانات المفتاح المخصص:" else "Custom Keystore Credentials:",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+
+                        androidx.compose.material3.OutlinedTextField(
+                            value = signingConfig.customKeystorePath ?: "",
+                            onValueChange = { viewModel.setCustomKeystore(true, it, signingConfig.keystorePassword, signingConfig.keyAlias, signingConfig.keyPassword) },
+                            label = { Text(if (isArabic) "مسار ملف Keystore (/sdcard/...)" else "Keystore Path (/sdcard/...)") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+
+                        androidx.compose.material3.OutlinedTextField(
+                            value = signingConfig.keystorePassword,
+                            onValueChange = { viewModel.setCustomKeystore(true, signingConfig.customKeystorePath, it, signingConfig.keyAlias, signingConfig.keyPassword) },
+                            label = { Text(if (isArabic) "كلمة مرور Keystore" else "Keystore Password") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+
+                        androidx.compose.material3.OutlinedTextField(
+                            value = signingConfig.keyAlias,
+                            onValueChange = { viewModel.setCustomKeystore(true, signingConfig.customKeystorePath, signingConfig.keystorePassword, it, signingConfig.keyPassword) },
+                            label = { Text(if (isArabic) "اسم المعرّف (Key Alias)" else "Key Alias") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+
+                        androidx.compose.material3.OutlinedTextField(
+                            value = signingConfig.keyPassword,
+                            onValueChange = { viewModel.setCustomKeystore(true, signingConfig.customKeystorePath, signingConfig.keystorePassword, signingConfig.keyAlias, it) },
+                            label = { Text(if (isArabic) "كلمة مرور المفتاح (Key Password)" else "Key Password") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(NeonCyan.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
+                            .padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (isArabic)
+                                "✓ مفتاح AOSP TestKey الرسمي المدمج (RSA 2048 / SHA-256) نشط ومتوافق مع جميع أجهزة أندرويد."
+                            else
+                                "✓ Official embedded AOSP TestKey (RSA 2048 / SHA-256) is active and ready.",
+                            color = NeonCyan,
+                            fontSize = 11.5.sp
+                        )
+                    }
+                }
+            }
+        }
 
         // Preference Card 1: Language & Diagnostics
         Card(
@@ -289,3 +463,41 @@ fun SettingsSwitchRow(
         )
     }
 }
+
+@Composable
+fun SigningSchemeCheckbox(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                color = Color.White,
+                fontSize = 13.5.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                text = subtitle,
+                color = TextSecondary,
+                fontSize = 11.sp
+            )
+        }
+        androidx.compose.material3.Checkbox(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = androidx.compose.material3.CheckboxDefaults.colors(
+                checkedColor = NeonCyan,
+                checkmarkColor = DarkBackground,
+                uncheckedColor = TextSecondary
+            )
+        )
+    }
+}
+

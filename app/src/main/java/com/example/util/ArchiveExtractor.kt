@@ -238,6 +238,7 @@ object ArchiveExtractor {
         fileName: String,
         totalBytes: Long,
         destinationDir: File,
+        signingConfig: com.example.data.model.SigningConfig = com.example.data.model.SigningConfig(),
         onProgress: (ExtractionProgress) -> Unit
     ): List<File> = withContext(Dispatchers.IO) {
         if (!destinationDir.exists()) {
@@ -276,7 +277,7 @@ object ArchiveExtractor {
                     }
                 }
                 if (targetApk.exists() && targetApk.length() > 0) {
-                    val signed = ApkSignerUtil.signAndAlignApk(targetApk)
+                    val signed = ApkSignerHelper.signAndAlignApk(targetApk, signingConfig)
                     extractedFiles.add(signed)
                 }
             } else {
@@ -310,7 +311,7 @@ object ArchiveExtractor {
                         }
                     }
                     if (targetApk.exists() && targetApk.length() > 0) {
-                        val signed = ApkSignerUtil.signAndAlignApk(targetApk)
+                        val signed = ApkSignerHelper.signAndAlignApk(targetApk, signingConfig)
                         extractedFiles.add(signed)
                     }
                 } else {
@@ -355,8 +356,15 @@ object ArchiveExtractor {
                                     if (name.contains("pairip", ignoreCase = true)) continue
 
                                     if (writtenEntries.add(name)) {
+                                        val isManifest = name.equals("AndroidManifest.xml", ignoreCase = true)
                                         outZip.putNextEntry(ZipEntry(name))
-                                        baseZip.getInputStream(entry).use { it.copyTo(outZip, BUFFER_SIZE) }
+                                        if (isManifest) {
+                                            val manifestBytes = baseZip.getInputStream(entry).use { it.readBytes() }
+                                            val sanitizedBytes = AxmlParser.sanitizeSplitManifest(manifestBytes)
+                                            outZip.write(sanitizedBytes)
+                                        } else {
+                                            baseZip.getInputStream(entry).use { it.copyTo(outZip, BUFFER_SIZE) }
+                                        }
                                         outZip.closeEntry()
                                     }
                                 }
@@ -407,7 +415,7 @@ object ArchiveExtractor {
                     }
 
                     if (targetApk.exists() && targetApk.length() > 0) {
-                        val signed = ApkSignerUtil.signAndAlignApk(targetApk)
+                        val signed = ApkSignerHelper.signAndAlignApk(targetApk, signingConfig)
                         extractedFiles.add(signed)
                     }
                 }
