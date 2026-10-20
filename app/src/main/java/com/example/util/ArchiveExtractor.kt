@@ -14,10 +14,13 @@ import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
 import kotlin.coroutines.coroutineContext
 
 data class ExtractionProgress(
@@ -64,7 +67,20 @@ object ArchiveExtractor {
     }
 
     /**
-     * Inspects an archive without full extraction by streaming through its entries.
+     * Copies content URI to a temporary cache file so ZipFile can perform robust random-access.
+     */
+    private suspend fun cacheUriToTempFile(context: Context, uri: Uri): File = withContext(Dispatchers.IO) {
+        val tempFile = File(context.cacheDir, "omni_cache_${System.currentTimeMillis()}.tmp")
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            FileOutputStream(tempFile).use { output ->
+                input.copyTo(output, BUFFER_SIZE)
+            }
+        } ?: throw IllegalStateException("Could not open input stream from URI.")
+        tempFile
+    }
+
+    /**
+     * Inspects an archive using ZipFile random access.
      */
     suspend fun analyzeArchive(
         context: Context,
@@ -92,29 +108,38 @@ object ArchiveExtractor {
             else -> "ARCHIVE"
         }
 
-        if (extension == "apk") {
-            // Single APK
-            splits.add(
-                ApkSplitInfo(
-                    name = fileName,
-                    splitType = SplitType.STANDALONE,
-                    size = fileSize
+        val tempFile = cacheUriToTempFile(context, uri)
+        try {
+            if (extension == "apk") {
+                splits.add(
+                    ApkSplitInfo(
+                        name = fileName,
+                        splitType = SplitType.STANDALONE,
+                        size = fileSize
+                    )
                 )
-            )
-            isStandalone = true
-            baseApkFound = true
+                isStandalone = true
+                baseApkFound = true
 
-            // Read AndroidManifest.xml from single APK safely
-            context.contentResolver.openInputStream(uri)?.use { stream ->
-                manifestStrings = extractManifestStringsFromZip(stream)
-            }
-        } else {
-            // Archive (XAPK, APKS, ZIP)
-            context.contentResolver.openInputStream(uri)?.use { rawStream ->
-                ZipInputStream(BufferedInputStream(rawStream, BUFFER_SIZE)).use { zip ->
-                    var entry: ZipEntry? = zip.nextEntry
-                    while (entry != null) {
+                ZipFile(tempFile).use { zip ->
+                    val entry = zip.getEntry("AndroidManifest.xml")
+                    if (entry != null) {
+                        zip.getInputStream(entry).use { stream ->
+                            manifestStrings = AxmlParser.extractStrings(stream)
+                        }
+                    } else {
+                        // Check inside apk if needed
+                        zip.getInputStream(zip.entries().nextElement()).use { apkStream ->
+                            manifestStrings = extractManifestStringsFromZip(apkStream)
+                        }
+                    }
+                }
+            } else {
+                ZipFile(tempFile).use { zip ->
+                    val entries = zip.entries()
+                    while (entries.hasMoreElements()) {
                         coroutineContext.ensureActive()
+                        val entry = entries.nextElement()
                         val entryName = entry.name
                         val entrySize = entry.size
 
@@ -123,7 +148,7 @@ object ArchiveExtractor {
                             val arch = extractArchFromSplitName(entryName)
                             if (arch != null) detectedArch.add(arch)
 
-                            if (splitType == SplitType.BASE) {
+                            if (splitType == SplitType.BASE || entryName.endsWith("base.apk", ignoreCase = true)) {
                                 baseApkFound = true
                             }
 
@@ -138,33 +163,33 @@ object ArchiveExtractor {
                                 )
                             )
 
-                            // Read manifest from base.apk using streaming buffer without OOM
-                            if (manifestStrings.isEmpty() && (splitType == SplitType.BASE || splits.size == 1)) {
-                                manifestStrings = extractManifestFromApkStream(zip)
+                            // Read manifest from base.apk or first apk
+                            if (manifestStrings.isEmpty() && (splitType == SplitType.BASE || entryName.contains("base", ignoreCase = true) || splits.size == 1)) {
+                                zip.getInputStream(entry).use { apkStream ->
+                                    manifestStrings = extractManifestStringsFromZip(apkStream)
+                                }
                             }
                         } else if (entryName.contains(".obb", ignoreCase = true)) {
                             obbFiles.add(entryName.substringAfterLast('/'))
                         } else if (entryName.equals("manifest.json", ignoreCase = true)) {
-                            // Parse XAPK manifest.json
                             try {
-                                val jsonBytes = zip.readBytes()
-                                val jsonStr = String(jsonBytes, Charsets.UTF_8)
-                                val obj = JSONObject(jsonStr)
-                                if (obj.has("package_name")) jsonPackageName = obj.optString("package_name")
-                                if (obj.has("version_name")) jsonVersionName = obj.optString("version_name")
-                                if (obj.has("version_code")) jsonVersionCode = obj.optLong("version_code")
+                                zip.getInputStream(entry).use { jsonStream ->
+                                    val jsonStr = jsonStream.bufferedReader().use { it.readText() }
+                                    val obj = JSONObject(jsonStr)
+                                    if (obj.has("package_name")) jsonPackageName = obj.optString("package_name")
+                                    if (obj.has("version_name")) jsonVersionName = obj.optString("version_name")
+                                    if (obj.has("version_code")) jsonVersionCode = obj.optLong("version_code")
+                                }
                             } catch (_: Exception) {}
                         }
-
-                        zip.closeEntry()
-                        entry = zip.nextEntry
                     }
                 }
-            }
 
-            // Determine standalone capability
-            isStandalone = splits.any { it.splitType == SplitType.STANDALONE } ||
-                (splits.size == 1 && baseApkFound)
+                isStandalone = splits.any { it.splitType == SplitType.STANDALONE } ||
+                    (splits.size == 1 && baseApkFound)
+            }
+        } finally {
+            try { tempFile.delete() } catch (_: Exception) {}
         }
 
         val pairIpReport = if (scanPairIp && manifestStrings.isNotEmpty()) {
@@ -204,9 +229,8 @@ object ArchiveExtractor {
     }
 
     /**
-     * Converts/extracts XAPK, APKS, ZIP, or APK directly into standalone APK files
-     * inside destinationDir (Downloads/APK Website).
-     * Guaranteed: Outputs ready .apk files directly (NOT folders of unpacked assets).
+     * Extracts and converts XAPK, APKS, ZIP, or APK into a single universal standalone APK file
+     * inside destinationDir (Downloads/APK Website), merging all split APKs and stripping PairIP components.
      */
     suspend fun extractArchive(
         context: Context,
@@ -220,7 +244,6 @@ object ArchiveExtractor {
             destinationDir.mkdirs()
         }
 
-        // Verify available disk space
         val freeSpace = destinationDir.usableSpace
         val requiredSpace = if (totalBytes > 0) (totalBytes * 1.5).toLong() else 50 * 1024 * 1024L
         if (requiredSpace > 0 && freeSpace < requiredSpace) {
@@ -230,145 +253,192 @@ object ArchiveExtractor {
         }
 
         val extractedFiles = mutableListOf<File>()
-        var bytesProcessed = 0L
-        val buffer = ByteArray(BUFFER_SIZE)
         val cleanBaseName = cleanPackageName(fileName)
+        val tempFile = cacheUriToTempFile(context, sourceUri)
 
-        val isSingleApk = fileName.endsWith(".apk", ignoreCase = true)
-
-        if (isSingleApk) {
-            // Save the single APK directly into Downloads/APK Website/<cleanBaseName>.apk
-            val targetApk = File(destinationDir, "$cleanBaseName.apk")
-            onProgress(
-                ExtractionProgress(
-                    percentage = 0.1f,
-                    bytesProcessed = 0,
-                    totalBytes = totalBytes,
-                    currentFileName = targetApk.name,
-                    stage = "Saving APK to Downloads/APK Website..."
+        try {
+            val isSingleApk = fileName.endsWith(".apk", ignoreCase = true)
+            if (isSingleApk) {
+                val targetApk = File(destinationDir, "$cleanBaseName.apk")
+                onProgress(
+                    ExtractionProgress(
+                        percentage = 0.1f,
+                        bytesProcessed = 0,
+                        totalBytes = totalBytes,
+                        currentFileName = targetApk.name,
+                        stage = "Saving APK to Downloads/APK Website..."
+                    )
                 )
-            )
 
-            context.contentResolver.openInputStream(sourceUri)?.use { input ->
-                BufferedOutputStream(FileOutputStream(targetApk), BUFFER_SIZE).use { output ->
-                    var len: Int
-                    while (input.read(buffer).also { len = it } != -1) {
-                        coroutineContext.ensureActive()
-                        output.write(buffer, 0, len)
-                        bytesProcessed += len
-                        if (totalBytes > 0) {
-                            val pct = (bytesProcessed.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
-                            onProgress(
-                                ExtractionProgress(
-                                    percentage = pct,
-                                    bytesProcessed = bytesProcessed,
-                                    totalBytes = totalBytes,
-                                    currentFileName = targetApk.name,
-                                    stage = "Writing $cleanBaseName.apk..."
-                                )
-                            )
+                FileInputStream(tempFile).use { input ->
+                    BufferedOutputStream(FileOutputStream(targetApk), BUFFER_SIZE).use { output ->
+                        input.copyTo(output, BUFFER_SIZE)
+                    }
+                }
+                if (targetApk.exists() && targetApk.length() > 0) {
+                    extractedFiles.add(targetApk)
+                }
+            } else {
+                val apkEntries = mutableListOf<ZipEntry>()
+                val obbEntries = mutableMapOf<String, ZipEntry>()
+
+                ZipFile(tempFile).use { zip ->
+                    val entries = zip.entries()
+                    while (entries.hasMoreElements()) {
+                        val entry = entries.nextElement()
+                        val entryName = entry.name
+                        if (entryName.endsWith(".apk", ignoreCase = true)) {
+                            apkEntries.add(entry)
+                        } else if (entryName.contains(".obb", ignoreCase = true)) {
+                            obbEntries[entryName.substringAfterLast('/')] = entry
                         }
                     }
                 }
-            } ?: throw IllegalStateException("Could not open input stream from file.")
 
-            if (targetApk.exists() && targetApk.length() > 0) {
-                extractedFiles.add(targetApk)
-            }
-        } else {
-            // XAPK, APKS, or ZIP archive conversion
-            var primaryApkSaved = false
+                if (apkEntries.isEmpty()) {
+                    throw IllegalStateException("No valid APK files found inside archive.")
+                }
 
-            context.contentResolver.openInputStream(sourceUri)?.use { rawStream ->
-                ZipInputStream(BufferedInputStream(rawStream, BUFFER_SIZE)).use { zip ->
-                    var entry: ZipEntry? = zip.nextEntry
-                    while (entry != null) {
-                        coroutineContext.ensureActive()
-                        val entryName = entry.name
-
-                        // Only extract genuine APK or OBB files!
-                        // Do NOT extract internal folders (res/, assets/, META-INF/) into the output directory!
-                        if (entryName.endsWith(".apk", ignoreCase = true)) {
-                            val lower = entryName.lowercase()
-                            val isBaseOrMain = lower.contains("base") ||
-                                lower.contains("master") ||
-                                lower.contains("standalone") ||
-                                !primaryApkSaved
-
-                            val outFileName = if (isBaseOrMain && !primaryApkSaved) {
-                                primaryApkSaved = true
-                                "$cleanBaseName.apk" // Direct primary APK ready to install!
-                            } else {
-                                val splitSuffix = entryName.substringAfterLast('/').substringBeforeLast('.')
-                                "${cleanBaseName}_$splitSuffix.apk"
+                if (apkEntries.size == 1) {
+                    val targetApk = File(destinationDir, "$cleanBaseName.apk")
+                    ZipFile(tempFile).use { zip ->
+                        zip.getInputStream(apkEntries.first()).use { input ->
+                            BufferedOutputStream(FileOutputStream(targetApk), BUFFER_SIZE).use { output ->
+                                input.copyTo(output, BUFFER_SIZE)
                             }
+                        }
+                    }
+                    if (targetApk.exists() && targetApk.length() > 0) {
+                        extractedFiles.add(targetApk)
+                    }
+                } else {
+                    onProgress(
+                        ExtractionProgress(
+                            percentage = 0.2f,
+                            bytesProcessed = 0,
+                            totalBytes = totalBytes,
+                            currentFileName = "Merging split APKs...",
+                            stage = "Merging ${apkEntries.size} split APKs into universal APK & stripping PairIP..."
+                        )
+                    )
 
-                            val targetApk = File(destinationDir, outFileName)
-                            BufferedOutputStream(FileOutputStream(targetApk), BUFFER_SIZE).use { out ->
-                                var len: Int
-                                while (zip.read(buffer).also { len = it } != -1) {
-                                    coroutineContext.ensureActive()
-                                    out.write(buffer, 0, len)
-                                    bytesProcessed += len
-                                    if (totalBytes > 0) {
-                                        val pct = (bytesProcessed.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
-                                        onProgress(
-                                            ExtractionProgress(
-                                                percentage = pct,
-                                                bytesProcessed = bytesProcessed,
-                                                totalBytes = totalBytes,
-                                                currentFileName = targetApk.name,
-                                                stage = "Extracting ${targetApk.name}..."
-                                            )
-                                        )
+                    val baseEntry = apkEntries.firstOrNull {
+                        it.name.contains("base", ignoreCase = true) || it.name.contains("master", ignoreCase = true)
+                    } ?: apkEntries.maxByOrNull { it.size } ?: apkEntries.first()
+
+                    val targetApk = File(destinationDir, "$cleanBaseName.apk")
+
+                    ZipOutputStream(BufferedOutputStream(FileOutputStream(targetApk), BUFFER_SIZE)).use { outZip ->
+                        val writtenEntries = mutableSetOf<String>()
+
+                        // 1. Process Base APK
+                        val baseTemp = File(context.cacheDir, "base_split_${System.currentTimeMillis()}.tmp")
+                        try {
+                            ZipFile(tempFile).use { zip ->
+                                zip.getInputStream(baseEntry).use { input ->
+                                    FileOutputStream(baseTemp).use { output ->
+                                        input.copyTo(output, BUFFER_SIZE)
                                     }
                                 }
                             }
 
-                            if (targetApk.exists() && targetApk.length() > 0) {
-                                extractedFiles.add(targetApk)
-                            }
-                        } else if (entryName.contains(".obb", ignoreCase = true)) {
-                            // Extract OBB file alongside the APK
-                            val obbFileName = entryName.substringAfterLast('/')
-                            val targetObb = File(destinationDir, obbFileName)
-                            BufferedOutputStream(FileOutputStream(targetObb), BUFFER_SIZE).use { out ->
-                                var len: Int
-                                while (zip.read(buffer).also { len = it } != -1) {
-                                    coroutineContext.ensureActive()
-                                    out.write(buffer, 0, len)
-                                    bytesProcessed += len
+                            ZipFile(baseTemp).use { baseZip ->
+                                val baseEntries = baseZip.entries()
+                                while (baseEntries.hasMoreElements()) {
+                                    val entry = baseEntries.nextElement()
+                                    val name = entry.name
+                                    if (name.startsWith("META-INF/") && (name.endsWith(".SF") || name.endsWith(".RSA") || name.endsWith(".DSA"))) {
+                                        continue
+                                    }
+                                    if (name.contains("pairip", ignoreCase = true)) continue
+
+                                    if (writtenEntries.add(name)) {
+                                        outZip.putNextEntry(ZipEntry(name))
+                                        baseZip.getInputStream(entry).use { it.copyTo(outZip, BUFFER_SIZE) }
+                                        outZip.closeEntry()
+                                    }
                                 }
                             }
-                            if (targetObb.exists() && targetObb.length() > 0) {
-                                extractedFiles.add(targetObb)
-                            }
-                        } else {
-                            // Skip non-APK/non-OBB files to prevent creating unwanted folders in Downloads!
-                            var len: Int
-                            while (zip.read(buffer).also { len = it } != -1) {
-                                bytesProcessed += len
-                            }
+                        } finally {
+                            try { baseTemp.delete() } catch (_: Exception) {}
                         }
 
-                        zip.closeEntry()
-                        entry = zip.nextEntry
+                        // 2. Process Split APKs
+                        var dexIndex = 2
+                        for (splitEntry in apkEntries) {
+                            if (splitEntry == baseEntry) continue
+                            val splitTemp = File(context.cacheDir, "split_${System.currentTimeMillis()}.tmp")
+                            try {
+                                ZipFile(tempFile).use { zip ->
+                                    zip.getInputStream(splitEntry).use { input ->
+                                        FileOutputStream(splitTemp).use { output ->
+                                            input.copyTo(output, BUFFER_SIZE)
+                                        }
+                                    }
+                                }
+
+                                ZipFile(splitTemp).use { splitZip ->
+                                    val splitEntries = splitZip.entries()
+                                    while (splitEntries.hasMoreElements()) {
+                                        val entry = splitEntries.nextElement()
+                                        var name = entry.name
+                                        if (name.equals("AndroidManifest.xml", ignoreCase = true)) continue
+                                        if (name.startsWith("META-INF/")) continue
+                                        if (name.contains("pairip", ignoreCase = true)) continue
+
+                                        if (name.matches(Regex("classes\\d*\\.dex", RegexOption.IGNORE_CASE))) {
+                                            name = "classes$dexIndex.dex"
+                                            dexIndex++
+                                        }
+
+                                        if (writtenEntries.add(name)) {
+                                            outZip.putNextEntry(ZipEntry(name))
+                                            splitZip.getInputStream(entry).use { it.copyTo(outZip, BUFFER_SIZE) }
+                                            outZip.closeEntry()
+                                        }
+                                    }
+                                }
+                            } finally {
+                                try { splitTemp.delete() } catch (_: Exception) {}
+                            }
+                        }
+                    }
+
+                    if (targetApk.exists() && targetApk.length() > 0) {
+                        extractedFiles.add(targetApk)
                     }
                 }
-            } ?: throw IllegalStateException("Could not open input stream from file.")
+
+                // Extract OBB files
+                for ((obbName, obbEntry) in obbEntries) {
+                    val targetObb = File(destinationDir, obbName)
+                    ZipFile(tempFile).use { zip ->
+                        zip.getInputStream(obbEntry).use { input ->
+                            BufferedOutputStream(FileOutputStream(targetObb), BUFFER_SIZE).use { output ->
+                                input.copyTo(output, BUFFER_SIZE)
+                            }
+                        }
+                    }
+                    if (targetObb.exists() && targetObb.length() > 0) {
+                        extractedFiles.add(targetObb)
+                    }
+                }
+            }
+        } finally {
+            try { tempFile.delete() } catch (_: Exception) {}
         }
 
         if (extractedFiles.isEmpty()) {
-            throw IllegalStateException("Extraction failed: no valid APK files found in archive.")
+            throw IllegalStateException("Extraction failed: no valid APK files generated.")
         }
 
         onProgress(
             ExtractionProgress(
                 percentage = 1.0f,
-                bytesProcessed = bytesProcessed,
+                bytesProcessed = totalBytes,
                 totalBytes = totalBytes,
                 currentFileName = "$cleanBaseName.apk",
-                stage = "Conversion complete! Ready APK file created in Downloads/APK Website",
+                stage = "Conversion complete! Universal APK ready in Downloads/APK Website",
                 isComplete = true
             )
         )
@@ -384,11 +454,13 @@ object ArchiveExtractor {
         uri: Uri
     ): List<ArchiveEntryItem> = withContext(Dispatchers.IO) {
         val entries = mutableListOf<ArchiveEntryItem>()
-        context.contentResolver.openInputStream(uri)?.use { stream ->
-            ZipInputStream(BufferedInputStream(stream, BUFFER_SIZE)).use { zip ->
-                var entry: ZipEntry? = zip.nextEntry
+        val tempFile = cacheUriToTempFile(context, uri)
+        try {
+            ZipFile(tempFile).use { zip ->
+                val zipEntries = zip.entries()
                 var count = 0
-                while (entry != null && count < 300) {
+                while (zipEntries.hasMoreElements() && count < 400) {
+                    val entry = zipEntries.nextElement()
                     entries.add(
                         ArchiveEntryItem(
                             path = entry.name,
@@ -397,16 +469,16 @@ object ArchiveExtractor {
                         )
                     )
                     count++
-                    zip.closeEntry()
-                    entry = zip.nextEntry
                 }
             }
+        } finally {
+            try { tempFile.delete() } catch (_: Exception) {}
         }
         entries.sortedWith(compareBy({ !it.isDirectory }, { it.path }))
     }
 
     /**
-     * Reads AndroidManifest.xml strings from a top-level zip or apk.
+     * Reads AndroidManifest.xml strings from a zip stream.
      */
     fun extractManifestStringsFromZip(stream: InputStream): List<String> {
         return try {
@@ -422,39 +494,6 @@ object ArchiveExtractor {
                 }
                 emptyList()
             }
-        } catch (_: Exception) {
-            emptyList()
-        }
-    }
-
-    /**
-     * Extracts manifest strings from an APK entry stream safely without loading entire APK into memory.
-     */
-    private fun extractManifestFromApkStream(zip: ZipInputStream): List<String> {
-        return try {
-            val maxHeaderBytes = 1024 * 1024
-            val buffer = ByteArray(32 * 1024)
-            val baos = ByteArrayOutputStream()
-            var totalRead = 0
-            while (totalRead < maxHeaderBytes) {
-                val bytesRead = zip.read(buffer)
-                if (bytesRead == -1) break
-                baos.write(buffer, 0, bytesRead)
-                totalRead += bytesRead
-            }
-            val partialApk = baos.toByteArray()
-            ZipInputStream(partialApk.inputStream()).use { innerZip ->
-                var innerEntry = innerZip.nextEntry
-                while (innerEntry != null) {
-                    if (innerEntry.name.equals("AndroidManifest.xml", ignoreCase = true)) {
-                        val manifestBytes = innerZip.readBytes()
-                        return AxmlParser.extractStrings(manifestBytes.inputStream())
-                    }
-                    innerZip.closeEntry()
-                    innerEntry = innerZip.nextEntry
-                }
-            }
-            emptyList()
         } catch (_: Exception) {
             emptyList()
         }
