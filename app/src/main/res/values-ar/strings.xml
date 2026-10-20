@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Omni Split X</string>
+    <string name="app_subtitle">أداة تفكيك وتثبيت الحزم المتقدمة</string>
+    
+    <!-- Home Screen -->
+    <string name="select_file">اختر ملف XAPK / APKS / APK</string>
+    <string name="select_file_desc">انقر لاستعراض الملفات</string>
+    <string name="max_file_size_label">الحد الأقصى لحجم الملف: حتى 4 جيجابايت</string>
+    <string name="package_name_label">اسم الحزمة</string>
+    <string name="package_pending">في انتظار الاختيار...</string>
+    <string name="architecture_label">المعمارية</string>
+    <string name="version_label">الإصدار</string>
+    <string name="file_size_label">الحجم الفعلي للملف</string>
+    <string name="min_sdk_label">الحد الأدنى للنظام</string>
+    
+    <!-- PairIP Inspector -->
+    <string name="pairip_inspector">فاحص PAIRIP</string>
+    <string name="scan_pairip_components">فحص مكونات PairIP</string>
+    <string name="view_pairip_report">عرض تقرير PAIRIP</string>
+    <string name="pairip_clean">لم يتم العثور على أي مكونات PairIP</string>
+    <string name="pairip_detected">تم العثور على مكونات ترخيص PairIP</string>
+    <string name="pairip_notice_title">تشخيص ترخيص PairIP</string>
+    <string name="pairip_explanation">هذه المكونات خاصة بنظام التحقق من ترخيص التطبيقات. وفقاً لسياسات الأمان والتطوير الرسمية، تقوم هذه الأداة بتشخيص وفحص هذه المكونات وإظهار تقرير فني عنها دون التلاعب بأنظمة الحماية وحقوق الملكية.</string>
+    
+    <!-- Actions -->
+    <string name="extract_split_apks">استخراج حزم APK المقسمة</string>
+    <string name="extract_xapk">استخراج XAPK</string>
+    <string name="extract_apks">استخراج APKS</string>
+    <string name="inspect_apk">فحص الحزمة</string>
+    <string name="install_package">تثبيت الحزمة</string>
+    <string name="share_file">مشاركة</string>
+    <string name="delete_file">حذف</string>
+    <string name="cancel">إلغاء</string>
+    <string name="close">إغلاق</string>
+    
+    <!-- Output & Storage -->
+    <string name="output_location_label">مجلد الحفظ</string>
+    <string name="default_downloads">/Downloads/OmniSplitX</string>
+    <string name="change_location">تغيير</string>
+    <string name="free_space">المساحة المتوفرة</string>
+    
+    <!-- Bottom Nav -->
+    <string name="nav_home">الرئيسية</string>
+    <string name="nav_files">الملفات</string>
+    <string name="nav_history">السجل</string>
+    <string name="nav_settings">الإعدادات</string>
+    
+    <!-- Details Screen -->
+    <string name="file_details">تفاصيل وتحليل الحزمة</string>
+    <string name="apk_components">مكونات وحزم التجزئة</string>
+    <string name="base_apk">حزمة Base الأساسية</string>
+    <string name="split_apk">حزمة تقسيم التكوين</string>
+    <string name="standalone_apk_available">تتوفر حزمة APK مستقلة جاهزة للتثبيت</string>
+    <string name="splits_required_together">يجب تثبيت الحزم المقسمة معاً عبر مثبت الحزم المتعددة.</string>
+    <string name="extraction_in_progress">جاري الاستخراج والتحقق...</string>
+    <string name="extraction_complete">اكتمل الاستخراج بنجاح!</string>
+    
+    <!-- History & Empty States -->
+    <string name="history_title">سجل العمليات</string>
+    <string name="history_empty">لا توجد حزم معالجة بعد</string>
+    <string name="history_empty_hint">اختر أرشيف XAPK أو APKS أو ZIP للبدء بالاستخراج والفحص</string>
+    <string name="files_empty">لا توجد ملفات مستخرجة</string>
+    <string name="files_empty_hint">ستظهر الحزم المستخرجة هنا مع خيار التثبيت بنقرة واحدة</string>
+    
+    <!-- Settings -->
+    <string name="settings_title">الإعدادات</string>
+    <string name="language_setting">اللغة / Language</string>
+    <string name="auto_pairip_scan">فحص PairIP تلقائياً عند فتح الملف</string>
+    <string name="auto_pairip_desc">تدقيق AndroidManifest.xml مباشرة فور اختيار الأرشيف</string>
+    <string name="stream_buffer_size">حجم مخزن البث المؤقت</string>
+    <string name="stream_buffer_desc">مخزن مؤقت 64 كيلوبايت مُحسّن لدعم ملفات حتى 4 جيجابايت</string>
+    <string name="safe_storage_guard">حماية سعة التخزين</string>
+    <string name="safe_storage_desc">التحقق من توفر مساحة كافية على الذاكرة قبل بدء فك الضغط</string>
+    <string name="about_title">حول Omni Split X</string>
+    <string name="about_desc">أداة احترافية للتعامل مع حزم XAPK و APKS و ZIP المقسمة وتحويلها وتثبيتها بكفاءة وسرعة فائقة.</string>
+</resources>

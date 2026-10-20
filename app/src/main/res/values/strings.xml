@@ -1,0 +1,76 @@
+<resources>
+    <string name="app_name">Omni Split X</string>
+    <string name="app_subtitle">ANTI-SPLIT TOOLKIT</string>
+    
+    <!-- Home Screen -->
+    <string name="select_file">Select XAPK / APKS / APK</string>
+    <string name="select_file_desc">Tap to browse files</string>
+    <string name="max_file_size_label">Maximum file size: Up to 4 GB</string>
+    <string name="package_name_label">Package Name</string>
+    <string name="package_pending">Pending...</string>
+    <string name="architecture_label">Architecture</string>
+    <string name="version_label">Version</string>
+    <string name="file_size_label">Actual File Size</string>
+    <string name="min_sdk_label">Min SDK / Android</string>
+    
+    <!-- PairIP Inspector -->
+    <string name="pairip_inspector">PAIRIP INSPECTOR</string>
+    <string name="scan_pairip_components">Scan PairIP Components</string>
+    <string name="view_pairip_report">VIEW PAIRIP REPORT</string>
+    <string name="pairip_clean">No PairIP Licensing Components Detected</string>
+    <string name="pairip_detected">PairIP Licensing Components Found</string>
+    <string name="pairip_notice_title">PairIP License Diagnostics</string>
+    <string name="pairip_explanation">These components are part of application licensing verification. In accordance with platform security and integrity guidelines, this tool audits and reports these components for developer diagnostics. Bypassing or removing licensing DRM is not performed.</string>
+    
+    <!-- Actions -->
+    <string name="extract_split_apks">EXTRACT SPLIT APKS</string>
+    <string name="extract_xapk">EXTRACT XAPK</string>
+    <string name="extract_apks">EXTRACT APKS</string>
+    <string name="inspect_apk">INSPECT APK</string>
+    <string name="install_package">INSTALL PACKAGE</string>
+    <string name="share_file">SHARE</string>
+    <string name="delete_file">DELETE</string>
+    <string name="cancel">CANCEL</string>
+    <string name="close">CLOSE</string>
+    
+    <!-- Output & Storage -->
+    <string name="output_location_label">Output Location</string>
+    <string name="default_downloads">/Downloads/OmniSplitX</string>
+    <string name="change_location">Change</string>
+    <string name="free_space">Available Storage</string>
+    
+    <!-- Bottom Nav -->
+    <string name="nav_home">Home</string>
+    <string name="nav_files">Files</string>
+    <string name="nav_history">History</string>
+    <string name="nav_settings">Settings</string>
+    
+    <!-- Details Screen -->
+    <string name="file_details">File Details &amp; Analysis</string>
+    <string name="apk_components">APK Components &amp; Splits</string>
+    <string name="base_apk">Base APK</string>
+    <string name="split_apk">Split Config</string>
+    <string name="standalone_apk_available">Standalone APK Available</string>
+    <string name="splits_required_together">Split APKs must be installed together via Split Installer.</string>
+    <string name="extraction_in_progress">Extracting &amp; Validating...</string>
+    <string name="extraction_complete">Extraction Successful!</string>
+    
+    <!-- History & Empty States -->
+    <string name="history_title">Processing History</string>
+    <string name="history_empty">No processed packages yet</string>
+    <string name="history_empty_hint">Select an XAPK, APKS, or ZIP archive to begin extraction and audit</string>
+    <string name="files_empty">No extracted files found</string>
+    <string name="files_empty_hint">Extracted APKs will appear here with one-tap installer</string>
+    
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="language_setting">Language / اللغة</string>
+    <string name="auto_pairip_scan">Auto-Scan PairIP on File Load</string>
+    <string name="auto_pairip_desc">Automatically audit AndroidManifest.xml when an archive is selected</string>
+    <string name="stream_buffer_size">Streaming Buffer Size</string>
+    <string name="stream_buffer_desc">Optimized 64 KB streaming buffer for files up to 4 GB</string>
+    <string name="safe_storage_guard">Storage Safety Guard</string>
+    <string name="safe_storage_desc">Verify free disk space prior to beginning large archive decompression</string>
+    <string name="about_title">About Omni Split X</string>
+    <string name="about_desc">High-performance Anti-Split Toolkit for Android. Converts, extracts, and installs XAPK, APKS, and split archives with zero memory blow-up.</string>
+</resources>

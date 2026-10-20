@@ -1,0 +1,6 @@
+{
+  "name": "Omni Split X",
+  "description": "Anti-Split Toolkit for extracting, converting, and inspecting XAPK, APKS, and ZIP packages with PairIP manifest diagnostics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
