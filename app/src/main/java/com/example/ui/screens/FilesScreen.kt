@@ -86,7 +86,7 @@ fun FilesScreen(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "${files.size} APK components ready in output directory",
+                    text = "${files.size} APK file(s) in /Downloads/APK Website",
                     color = TextSecondary,
                     fontSize = 12.sp
                 )

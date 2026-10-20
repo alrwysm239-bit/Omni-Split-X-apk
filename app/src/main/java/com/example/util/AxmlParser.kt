@@ -2,7 +2,6 @@ package com.example.util
 
 import com.example.data.model.PairIpComponent
 import com.example.data.model.PairIpReport
-import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -22,12 +21,10 @@ object AxmlParser {
         val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
         val headerType = buffer.int
         if (headerType != RES_XML_TYPE && headerType != 0x00080000) {
-            // Fallback: heuristic ascii/utf-8 scan for printable strings
             return scanPrintableStrings(bytes)
         }
 
-        // Search for string pool chunk
-        val headerSize = buffer.int // file size
+        buffer.int // file size
         val strings = mutableListOf<String>()
 
         while (buffer.hasRemaining() && buffer.remaining() >= 8) {
@@ -37,10 +34,10 @@ object AxmlParser {
             if (chunkType == RES_STRING_POOL_TYPE) {
                 val poolStart = buffer.position() - 8
                 val stringCount = buffer.int
-                val styleCount = buffer.int
+                buffer.int // styleCount
                 val flags = buffer.int
                 val stringsStart = buffer.int
-                val stylesStart = buffer.int
+                buffer.int // stylesStart
 
                 val isUtf8 = (flags and (1 shl 8)) != 0
 
@@ -86,7 +83,6 @@ object AxmlParser {
     private fun parseUtf8String(bytes: ByteArray, pos: Int): String {
         var p = pos
         if (p >= bytes.size) return ""
-        // Length header: 1 or 2 bytes for utf16 len, 1 or 2 bytes for utf8 len
         val len1 = bytes[p++].toInt() and 0xFF
         if (len1 and 0x80 != 0 && p < bytes.size) p++
         if (p >= bytes.size) return ""
@@ -125,9 +121,6 @@ object AxmlParser {
         }
     }
 
-    /**
-     * Fallback scanner for printable strings from raw bytes.
-     */
     fun scanPrintableStrings(bytes: ByteArray): List<String> {
         val result = mutableListOf<String>()
         val sb = StringBuilder()
@@ -186,7 +179,7 @@ object AxmlParser {
             it.contains("pairip", ignoreCase = true) &&
                 !it.equals(pairIpActivity, ignoreCase = true) &&
                 !it.equals(pairIpProvider, ignoreCase = true)
-        }.distinct().take(5).forEach { extra ->
+        }.distinct().take(10).forEach { extra ->
             detected.add(
                 PairIpComponent(
                     componentName = extra,
@@ -210,7 +203,7 @@ object AxmlParser {
             "Diagnostic Report:\n" +
                 "• Components: ${detected.joinToString { it.componentName }}\n" +
                 "• Explanation: These components verify license entitlement. Their presence indicates official Play Integrity/Licensing integration.\n" +
-                "• Recommended Action: Ensure the application is obtained directly via Google Play or provided with genuine developer entitlement keys. Modification to bypass licensing controls is prohibited."
+                "• Authorized Developer Build: To remove PairIP from your own application, remove the dependency in build.gradle and re-sign with your upload key."
         } else {
             "Standard APK package structure without external DRM license checks."
         }
@@ -248,5 +241,80 @@ object AxmlParser {
         if (versionName.isEmpty()) versionName = "1.0.0"
 
         return Triple(packageName, versionName, versionCode)
+    }
+
+    /**
+     * Generates a reconstructed, readable AndroidManifest representation for the MT Manager-style viewer.
+     */
+    fun generateReadableManifest(strings: List<String>): String {
+        val (pkg, verName, verCode) = extractMetadata(strings)
+        val permissions = strings.filter { it.startsWith("android.permission.") }.distinct()
+        val activities = strings.filter {
+            (it.contains("Activity") || it.contains(".activity.")) &&
+                !it.startsWith("android.") && !it.startsWith("androidx.")
+        }.distinct()
+        val providers = strings.filter {
+            (it.contains("Provider") || it.contains(".provider.")) &&
+                !it.startsWith("android.")
+        }.distinct()
+        val services = strings.filter {
+            (it.contains("Service") || it.contains(".service.")) &&
+                !it.startsWith("android.")
+        }.distinct()
+
+        val sb = StringBuilder()
+        sb.append("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n")
+        sb.append("<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\"\n")
+        sb.append("    package=\"$pkg\"\n")
+        sb.append("    android:versionCode=\"$verCode\"\n")
+        sb.append("    android:versionName=\"$verName\">\n\n")
+
+        if (permissions.isNotEmpty()) {
+            sb.append("    <!-- Permissions (${permissions.size}) -->\n")
+            for (p in permissions) {
+                sb.append("    <uses-permission android:name=\"$p\" />\n")
+            }
+            sb.append("\n")
+        }
+
+        sb.append("    <application\n")
+        sb.append("        android:label=\"@string/app_name\"\n")
+        sb.append("        android:allowBackup=\"true\">\n\n")
+
+        if (activities.isNotEmpty()) {
+            sb.append("        <!-- Activities (${activities.size}) -->\n")
+            for (a in activities) {
+                val isPairIp = a.contains("pairip", ignoreCase = true)
+                if (isPairIp) {
+                    sb.append("        <!-- [PAIRIP LICENSING COMPONENT] -->\n")
+                }
+                sb.append("        <activity android:name=\"$a\" android:exported=\"true\" />\n")
+            }
+            sb.append("\n")
+        }
+
+        if (providers.isNotEmpty()) {
+            sb.append("        <!-- Content Providers (${providers.size}) -->\n")
+            for (pr in providers) {
+                val isPairIp = pr.contains("pairip", ignoreCase = true)
+                if (isPairIp) {
+                    sb.append("        <!-- [PAIRIP LICENSING COMPONENT] -->\n")
+                }
+                sb.append("        <provider android:name=\"$pr\" android:exported=\"false\" />\n")
+            }
+            sb.append("\n")
+        }
+
+        if (services.isNotEmpty()) {
+            sb.append("        <!-- Services (${services.size}) -->\n")
+            for (s in services) {
+                sb.append("        <service android:name=\"$s\" />\n")
+            }
+            sb.append("\n")
+        }
+
+        sb.append("    </application>\n")
+        sb.append("</manifest>\n")
+        return sb.toString()
     }
 }

@@ -54,4 +54,21 @@ class ExampleUnitTest {
         assertEquals("v3.4.1", version)
         assertEquals(1L, code)
     }
+
+    @Test
+    fun testGenerateReadableManifest() {
+        val testStrings = listOf(
+            "com.example.app",
+            "v1.2.3",
+            "android.permission.INTERNET",
+            "com.pairip.licensecheck.LicenseActivity",
+            "com.example.app.MainActivity"
+        )
+
+        val xml = AxmlParser.generateReadableManifest(testStrings)
+        assertTrue(xml.contains("package=\"com.example.app\""))
+        assertTrue(xml.contains("android.permission.INTERNET"))
+        assertTrue(xml.contains("com.pairip.licensecheck.LicenseActivity"))
+        assertTrue(xml.contains("[PAIRIP LICENSING COMPONENT]"))
+    }
 }

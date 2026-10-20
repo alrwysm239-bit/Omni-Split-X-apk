@@ -21,6 +21,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.Button
@@ -43,6 +44,7 @@ import com.example.ui.components.AppCyberHeader
 import com.example.ui.components.CyberPrimaryGradientButton
 import com.example.ui.components.CyberSecondaryButton
 import com.example.ui.components.ExtractionProgressCard
+import com.example.ui.components.MtManagerExplorerDialog
 import com.example.ui.components.OutputLocationCard
 import com.example.ui.components.PackageInfoCard
 import com.example.ui.components.PairIpInspectorCard
@@ -71,20 +73,27 @@ fun HomeScreen(
     val selectedFileName by viewModel.selectedFileName.collectAsState()
     val selectedFileSize by viewModel.selectedFileSize.collectAsState()
 
+    val showMtExplorer by viewModel.showMtExplorer.collectAsState()
+    val archiveEntries by viewModel.archiveEntries.collectAsState()
+    val manifestContent by viewModel.manifestContent.collectAsState()
+    val manifestSearchQuery by viewModel.manifestSearchQuery.collectAsState()
+
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         if (uri != null) {
             var name = "archive.xapk"
             var size = 0L
-            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
-                if (cursor.moveToFirst()) {
-                    if (nameIndex != -1) name = cursor.getString(nameIndex)
-                    if (sizeIndex != -1) size = cursor.getLong(sizeIndex)
+            try {
+                context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+                    if (cursor.moveToFirst()) {
+                        if (nameIndex != -1) name = cursor.getString(nameIndex)
+                        if (sizeIndex != -1) size = cursor.getLong(sizeIndex)
+                    }
                 }
-            }
+            } catch (_: Exception) {}
             viewModel.onFileSelected(uri, name, size)
         }
     }
@@ -93,6 +102,16 @@ fun HomeScreen(
         PairIpReportDialog(
             report = analysis?.pairIpReport,
             onDismiss = { viewModel.showPairIpModal(false) }
+        )
+    }
+
+    if (showMtExplorer) {
+        MtManagerExplorerDialog(
+            entries = archiveEntries,
+            manifestContent = manifestContent,
+            searchQuery = manifestSearchQuery,
+            onSearchChange = { viewModel.setManifestSearch(it) },
+            onDismiss = { viewModel.closeMtExplorer() }
         )
     }
 
@@ -192,13 +211,7 @@ fun HomeScreen(
             isScanningEnabled = scanPairIp,
             onToggleScan = { viewModel.togglePairIpScan(it) },
             onViewReport = {
-                if (analysis?.pairIpReport != null) {
-                    viewModel.showPairIpModal(true)
-                } else if (analysis == null) {
-                    viewModel.showPairIpModal(true)
-                } else {
-                    viewModel.showPairIpModal(true)
-                }
+                viewModel.showPairIpModal(true)
             },
             hasReport = analysis?.pairIpReport != null,
             hasPairIp = analysis?.pairIpReport?.hasPairIp ?: false
@@ -212,15 +225,32 @@ fun HomeScreen(
             )
         }
 
-        // Primary Button: EXTRACT SPLIT APKS
+        // Primary Button: EXTRACT SPLIT APKS / CONVERT TO APK WEBSITE
+        val isSingleApk = selectedFileName?.endsWith(".apk", ignoreCase = true) == true
         CyberPrimaryGradientButton(
-            text = "EXTRACT SPLIT APKS",
+            text = if (isSingleApk) "CONVERT & SAVE TO APK WEBSITE" else "EXTRACT SPLIT APKS",
             onClick = { viewModel.startExtraction() },
             enabled = selectedFileName != null,
             isLoading = progress != null && !(progress?.isComplete ?: false)
         )
 
-        // Secondary Button: PAIRIP INSPECTOR
+        // Secondary Button: APK EXPLORER (MT STYLE)
+        CyberSecondaryButton(
+            text = "APK EXPLORER (MT STYLE)",
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Code,
+                    contentDescription = null,
+                    tint = NeonCyan,
+                    modifier = Modifier.size(18.dp)
+                )
+            },
+            onClick = {
+                viewModel.openMtExplorer()
+            }
+        )
+
+        // Tertiary Button: PAIRIP INSPECTOR
         CyberSecondaryButton(
             text = "PAIRIP INSPECTOR",
             icon = {
@@ -236,9 +266,9 @@ fun HomeScreen(
             }
         )
 
-        // Output Location Row
+        // Output Location Row pointing to Downloads/APK Website
         OutputLocationCard(
-            path = "/Downloads/OmniSplitX"
+            path = "/Downloads/APK Website"
         )
 
         Spacer(modifier = Modifier.height(16.dp))
