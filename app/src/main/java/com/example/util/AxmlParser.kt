@@ -318,13 +318,29 @@ object AxmlParser {
         return sb.toString()
     }
 
+    private const val RES_XML_RESOURCE_MAP_TYPE = 0x00080180
+
+    // Resource IDs to neutralize (set to 0x00000000) so Android PackageParser does not match them:
+    private val TARGET_SPLIT_RES_IDS = intArrayOf(
+        0x0101064d, // requiredSplitTypes
+        0x0101064e, // splitTypes
+        0x01010591, // isSplitRequired
+        0x01010565, // isolatedSplits
+        0x0101055b, // isFeatureSplit
+        0x010104cc, // configForSplit
+        0x01010526  // splitName
+    )
+
     /**
      * Sanitizes binary AndroidManifest.xml (AXML) for merged APKs by neutralizing
-     * split declarations (such as isSplitRequired and com.android.vending.splits).
+     * split declarations (such as isSplitRequired, requiredSplitTypes, and com.android.vending.splits)
+     * and PairIP application/activity bindings.
      * Because target strings have identical lengths, offsets and chunk lengths remain 100% valid.
      */
     fun sanitizeSplitManifest(manifestBytes: ByteArray): ByteArray {
         val result = manifestBytes.copyOf()
+        wipeSplitResourceIds(result)
+
         val replacements = listOf(
             // 1. Play Store split requirements and vending metadata
             "com.android.vending.splits.required" to "com.android.vending.splits.merged__",
@@ -333,17 +349,20 @@ object AxmlParser {
             "com.android.stamp.source"            to "com.android.stmp.source_",
             "com.android.stamp.type"              to "com.android.stmp.type_",
 
-            // 2. Split attribute declarations
+            // 2. Split attribute declarations and composite values
             "requiredSplitTypes" to "__req_SplitTypes__",
             "isSplitRequired"    to "isSplitDisabled",
             "isFeatureSplit"     to "__isFeatSplit_",
             "configForSplit"     to "__cfgForSplit_",
             "isolatedSplits"     to "__isolated_spt",
             "splitTypes"         to "__sptTypes",
+            "base__abi,base__density" to "base_uni,base_density_",
+            "base__density"      to "base_density_",
             "base__abi"          to "base_uni_",
             "split"              to "__spt",
 
-            // 3. PairIP / Psirip protections and license checks
+            // 3. PairIP / Psirip protections, application class, and license checks
+            "com.pairip.application.Application"            to "com.disip.app.DisabledApplication_",
             "com.pairip.licensecheck.LicenseActivity"        to "com.disabled.licchk.DisabledActivity___",
             "com.pairip.licensecheck.LicenseContentProvider" to "com.disabled.licchk.DisabledContentProvider___",
             "com.pairip.licensecheck"                       to "com.disabled.lic_check_",
@@ -364,6 +383,43 @@ object AxmlParser {
             replaceSequence(result, targetUtf16, replaceUtf16)
         }
         return result
+    }
+
+    private fun wipeSplitResourceIds(bytes: ByteArray) {
+        if (bytes.size < 16) return
+        try {
+            val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+            val headerType = buffer.int
+            val fileSize = buffer.int
+            if (headerType != RES_XML_TYPE && headerType != 0x00080000) return
+
+            while (buffer.hasRemaining() && buffer.remaining() >= 8) {
+                val chunkType = buffer.int
+                val chunkSize = buffer.int
+                if (chunkSize <= 8) break
+
+                if (chunkType == RES_XML_RESOURCE_MAP_TYPE) {
+                    val count = (chunkSize - 8) / 4
+                    for (i in 0 until count) {
+                        if (buffer.remaining() >= 4) {
+                            val pos = buffer.position()
+                            val resId = buffer.int
+                            if (resId in TARGET_SPLIT_RES_IDS) {
+                                buffer.putInt(pos, 0x00000000)
+                            }
+                        }
+                    }
+                    break
+                } else {
+                    val skip = chunkSize - 8
+                    if (skip > 0 && buffer.remaining() >= skip) {
+                        buffer.position(buffer.position() + skip)
+                    } else {
+                        break
+                    }
+                }
+            }
+        } catch (_: Exception) {}
     }
 
     private fun replaceSequence(bytes: ByteArray, target: ByteArray, replacement: ByteArray) {
