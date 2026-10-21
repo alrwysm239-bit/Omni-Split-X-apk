@@ -108,4 +108,40 @@ class ExampleUnitTest {
         assertFalse(cleaned.contains("LicenseContentProvider"))
         assertTrue(cleaned.contains("com.game.MainActivity"))
     }
+
+    @Test
+    fun testBinaryManifestSanitization() {
+        val sample = "android:requiredSplitTypes=\"base__abi\" and android:splitTypes and isSplitRequired and psirip and pairip"
+            .toByteArray(Charsets.UTF_8)
+        val sanitized = AxmlParser.sanitizeSplitManifest(sample)
+
+        assertEquals(sample.size, sanitized.size)
+        val result = String(sanitized, Charsets.UTF_8)
+        println("SANITIZED_RESULT: $result")
+        assertFalse("Contains requiredSplitTypes", result.contains("requiredSplitTypes"))
+        assertFalse("Contains splitTypes", result.contains("splitTypes"))
+        assertFalse("Contains isSplitRequired", result.contains("isSplitRequired"))
+        assertFalse(result.contains("psirip"))
+        assertFalse(result.contains("pairip"))
+        assertTrue(result.contains("__req_SplitTypes__"))
+        assertTrue(result.contains("__sptTypes"))
+        assertTrue(result.contains("isSplitDisabled"))
+        assertTrue(result.contains("disrip"))
+    }
+
+    @Test
+    fun testUtf16ManifestSanitization() {
+        val sampleStr = "<manifest isSplitRequired=\"true\" requiredSplitTypes=\"base__abi\" splitTypes=\"density\">"
+        val sampleUtf16 = sampleStr.toByteArray(Charsets.UTF_16LE)
+        val sanitizedUtf16 = AxmlParser.sanitizeSplitManifest(sampleUtf16)
+
+        assertEquals(sampleUtf16.size, sanitizedUtf16.size)
+        val resultStr = String(sanitizedUtf16, Charsets.UTF_16LE)
+        assertFalse(resultStr.contains("isSplitRequired"))
+        assertFalse(resultStr.contains("requiredSplitTypes"))
+        assertFalse(resultStr.contains("splitTypes"))
+        assertTrue(resultStr.contains("isSplitDisabled"))
+        assertTrue(resultStr.contains("__req_SplitTypes__"))
+        assertTrue(resultStr.contains("__sptTypes"))
+    }
 }

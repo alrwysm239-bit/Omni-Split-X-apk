@@ -267,15 +267,43 @@ object ArchiveExtractor {
                         bytesProcessed = 0,
                         totalBytes = totalBytes,
                         currentFileName = targetApk.name,
-                        stage = "Saving APK to Downloads/APK Website..."
+                        stage = "Sanitizing manifest & preparing APK..."
                     )
                 )
 
-                FileInputStream(tempFile).use { input ->
-                    BufferedOutputStream(FileOutputStream(targetApk), BUFFER_SIZE).use { output ->
-                        input.copyTo(output, BUFFER_SIZE)
+                // Repack and sanitize manifest to remove any split flags or pairip/psirip
+                ZipOutputStream(BufferedOutputStream(FileOutputStream(targetApk), BUFFER_SIZE)).use { outZip ->
+                    ZipFile(tempFile).use { inZip ->
+                        val entries = inZip.entries()
+                        while (entries.hasMoreElements()) {
+                            val entry = entries.nextElement()
+                            val name = entry.name
+                            if (name.startsWith("META-INF/") && (
+                                    name.endsWith(".SF") ||
+                                    name.endsWith(".RSA") ||
+                                    name.endsWith(".DSA") ||
+                                    name.endsWith(".EC") ||
+                                    name.equals("META-INF/MANIFEST.MF", ignoreCase = true)
+                                )) {
+                                continue
+                            }
+                            if (name.contains("pairip", ignoreCase = true) || name.contains("psirip", ignoreCase = true)) {
+                                continue
+                            }
+
+                            outZip.putNextEntry(ZipEntry(name))
+                            if (name.equals("AndroidManifest.xml", ignoreCase = true)) {
+                                val manifestBytes = inZip.getInputStream(entry).use { it.readBytes() }
+                                val sanitizedBytes = AxmlParser.sanitizeSplitManifest(manifestBytes)
+                                outZip.write(sanitizedBytes)
+                            } else {
+                                inZip.getInputStream(entry).use { it.copyTo(outZip, BUFFER_SIZE) }
+                            }
+                            outZip.closeEntry()
+                        }
                     }
                 }
+
                 if (targetApk.exists() && targetApk.length() > 0) {
                     val signed = ApkSignerHelper.signAndAlignApk(targetApk, signingConfig)
                     extractedFiles.add(signed)
@@ -303,13 +331,53 @@ object ArchiveExtractor {
 
                 if (apkEntries.size == 1) {
                     val targetApk = File(destinationDir, "$cleanBaseName.apk")
-                    ZipFile(tempFile).use { zip ->
-                        zip.getInputStream(apkEntries.first()).use { input ->
-                            BufferedOutputStream(FileOutputStream(targetApk), BUFFER_SIZE).use { output ->
-                                input.copyTo(output, BUFFER_SIZE)
+                    val singleApkEntry = apkEntries.first()
+                    val tempSingleApk = File(context.cacheDir, "single_apk_${System.currentTimeMillis()}.tmp")
+
+                    try {
+                        ZipFile(tempFile).use { zip ->
+                            zip.getInputStream(singleApkEntry).use { input ->
+                                FileOutputStream(tempSingleApk).use { output ->
+                                    input.copyTo(output, BUFFER_SIZE)
+                                }
                             }
                         }
+
+                        ZipOutputStream(BufferedOutputStream(FileOutputStream(targetApk), BUFFER_SIZE)).use { outZip ->
+                            ZipFile(tempSingleApk).use { inZip ->
+                                val entries = inZip.entries()
+                                while (entries.hasMoreElements()) {
+                                    val entry = entries.nextElement()
+                                    val name = entry.name
+                                    if (name.startsWith("META-INF/") && (
+                                            name.endsWith(".SF") ||
+                                            name.endsWith(".RSA") ||
+                                            name.endsWith(".DSA") ||
+                                            name.endsWith(".EC") ||
+                                            name.equals("META-INF/MANIFEST.MF", ignoreCase = true)
+                                        )) {
+                                        continue
+                                    }
+                                    if (name.contains("pairip", ignoreCase = true) || name.contains("psirip", ignoreCase = true)) {
+                                        continue
+                                    }
+
+                                    outZip.putNextEntry(ZipEntry(name))
+                                    if (name.equals("AndroidManifest.xml", ignoreCase = true)) {
+                                        val manifestBytes = inZip.getInputStream(entry).use { it.readBytes() }
+                                        val sanitizedBytes = AxmlParser.sanitizeSplitManifest(manifestBytes)
+                                        outZip.write(sanitizedBytes)
+                                    } else {
+                                        inZip.getInputStream(entry).use { it.copyTo(outZip, BUFFER_SIZE) }
+                                    }
+                                    outZip.closeEntry()
+                                }
+                            }
+                        }
+                    } finally {
+                        try { tempSingleApk.delete() } catch (_: Exception) {}
                     }
+
                     if (targetApk.exists() && targetApk.length() > 0) {
                         val signed = ApkSignerHelper.signAndAlignApk(targetApk, signingConfig)
                         extractedFiles.add(signed)
@@ -321,7 +389,7 @@ object ArchiveExtractor {
                             bytesProcessed = 0,
                             totalBytes = totalBytes,
                             currentFileName = "Merging split APKs...",
-                            stage = "Merging ${apkEntries.size} split APKs into universal APK & stripping PairIP..."
+                            stage = "Merging ${apkEntries.size} split APKs into universal APK & removing PairIP/Psirip..."
                         )
                     )
 
@@ -350,10 +418,18 @@ object ArchiveExtractor {
                                 while (baseEntries.hasMoreElements()) {
                                     val entry = baseEntries.nextElement()
                                     val name = entry.name
-                                    if (name.startsWith("META-INF/") && (name.endsWith(".SF") || name.endsWith(".RSA") || name.endsWith(".DSA"))) {
+                                    if (name.startsWith("META-INF/") && (
+                                            name.endsWith(".SF") ||
+                                            name.endsWith(".RSA") ||
+                                            name.endsWith(".DSA") ||
+                                            name.endsWith(".EC") ||
+                                            name.equals("META-INF/MANIFEST.MF", ignoreCase = true)
+                                        )) {
                                         continue
                                     }
-                                    if (name.contains("pairip", ignoreCase = true)) continue
+                                    if (name.contains("pairip", ignoreCase = true) || name.contains("psirip", ignoreCase = true)) {
+                                        continue
+                                    }
 
                                     if (writtenEntries.add(name)) {
                                         val isManifest = name.equals("AndroidManifest.xml", ignoreCase = true)
@@ -373,8 +449,19 @@ object ArchiveExtractor {
                             try { baseTemp.delete() } catch (_: Exception) {}
                         }
 
-                        // 2. Process Split APKs
-                        var dexIndex = 2
+                        // 2. Process Split APKs with safe dex index assignment
+                        val maxBaseDex = writtenEntries.mapNotNull { entryName ->
+                            when {
+                                entryName.equals("classes.dex", ignoreCase = true) -> 1
+                                entryName.matches(Regex("classes(\\d+)\\.dex", RegexOption.IGNORE_CASE)) -> {
+                                    Regex("classes(\\d+)\\.dex", RegexOption.IGNORE_CASE)
+                                        .find(entryName)?.groupValues?.get(1)?.toIntOrNull()
+                                }
+                                else -> null
+                            }
+                        }.maxOrNull() ?: 1
+                        var nextDexIndex = maxBaseDex + 1
+
                         for (splitEntry in apkEntries) {
                             if (splitEntry == baseEntry) continue
                             val splitTemp = File(context.cacheDir, "split_${System.currentTimeMillis()}.tmp")
@@ -394,11 +481,13 @@ object ArchiveExtractor {
                                         var name = entry.name
                                         if (name.equals("AndroidManifest.xml", ignoreCase = true)) continue
                                         if (name.startsWith("META-INF/")) continue
-                                        if (name.contains("pairip", ignoreCase = true)) continue
+                                        if (name.contains("pairip", ignoreCase = true) || name.contains("psirip", ignoreCase = true)) {
+                                            continue
+                                        }
 
                                         if (name.matches(Regex("classes\\d*\\.dex", RegexOption.IGNORE_CASE))) {
-                                            name = "classes$dexIndex.dex"
-                                            dexIndex++
+                                            name = "classes$nextDexIndex.dex"
+                                            nextDexIndex++
                                         }
 
                                         if (writtenEntries.add(name)) {

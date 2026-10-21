@@ -326,10 +326,30 @@ object AxmlParser {
     fun sanitizeSplitManifest(manifestBytes: ByteArray): ByteArray {
         val result = manifestBytes.copyOf()
         val replacements = listOf(
-            "isSplitRequired" to "isSplitDisabled",
-            "isFeatureSplit" to "isFeatureNoSpl",
-            "isolatedSplits" to "isolatedNoSpl",
-            "com.android.vending.splits" to "com.android.disabled.splits"
+            // 1. Play Store split requirements and vending metadata
+            "com.android.vending.splits.required" to "com.android.vending.splits.merged__",
+            "com.android.vending.derived.apk.id"  to "com.android.disabled.apk.id_______",
+            "com.android.vending.splits"          to "com.android.vending.merged",
+            "com.android.stamp.source"            to "com.android.stmp.source_",
+            "com.android.stamp.type"              to "com.android.stmp.type_",
+
+            // 2. Split attribute declarations
+            "requiredSplitTypes" to "__req_SplitTypes__",
+            "isSplitRequired"    to "isSplitDisabled",
+            "isFeatureSplit"     to "__isFeatSplit_",
+            "configForSplit"     to "__cfgForSplit_",
+            "isolatedSplits"     to "__isolated_spt",
+            "splitTypes"         to "__sptTypes",
+            "base__abi"          to "base_uni_",
+            "split"              to "__spt",
+
+            // 3. PairIP / Psirip protections and license checks
+            "com.pairip.licensecheck.LicenseActivity"        to "com.disabled.licchk.DisabledActivity___",
+            "com.pairip.licensecheck.LicenseContentProvider" to "com.disabled.licchk.DisabledContentProvider___",
+            "com.pairip.licensecheck"                       to "com.disabled.lic_check_",
+            "com.pairip"                                    to "com.disip_",
+            "pairip"                                        to "disrip",
+            "psirip"                                        to "disrip"
         )
 
         for ((target, replacement) in replacements) {

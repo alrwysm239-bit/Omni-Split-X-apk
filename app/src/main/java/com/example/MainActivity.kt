@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
@@ -61,6 +62,7 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.screens.FilesScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.HistoryScreen
+import com.example.ui.screens.InstalledAppsScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.theme.DarkBackground
 import com.example.ui.theme.DarkBorder
@@ -120,9 +122,10 @@ class MainActivity : ComponentActivity() {
                             Crossfade(targetState = currentTab, label = "tab_fade") { tab ->
                                 when (tab) {
                                     0 -> HomeScreen(viewModel = viewModel)
-                                    1 -> FilesScreen(viewModel = viewModel)
-                                    2 -> HistoryScreen(viewModel = viewModel)
-                                    3 -> SettingsScreen(viewModel = viewModel)
+                                    1 -> InstalledAppsScreen(viewModel = viewModel)
+                                    2 -> FilesScreen(viewModel = viewModel)
+                                    3 -> HistoryScreen(viewModel = viewModel)
+                                    4 -> SettingsScreen(viewModel = viewModel)
                                 }
                             }
                         }
@@ -206,24 +209,31 @@ fun CyberBottomBar(
                 testTag = "nav_home"
             )
             BottomNavItem(
-                icon = Icons.Default.Folder,
-                label = if (isArabic) "الملفات" else "Files",
+                icon = Icons.Default.Android,
+                label = if (isArabic) "التطبيقات" else "Apps",
                 isSelected = currentTab == 1,
                 onClick = { onSelectTab(1) },
+                testTag = "nav_apps"
+            )
+            BottomNavItem(
+                icon = Icons.Default.Folder,
+                label = if (isArabic) "الملفات" else "Files",
+                isSelected = currentTab == 2,
+                onClick = { onSelectTab(2) },
                 testTag = "nav_files"
             )
             BottomNavItem(
                 icon = Icons.Default.History,
                 label = if (isArabic) "السجل" else "History",
-                isSelected = currentTab == 2,
-                onClick = { onSelectTab(2) },
+                isSelected = currentTab == 3,
+                onClick = { onSelectTab(3) },
                 testTag = "nav_history"
             )
             BottomNavItem(
                 icon = Icons.Default.Settings,
                 label = if (isArabic) "الإعدادات" else "Settings",
-                isSelected = currentTab == 3,
-                onClick = { onSelectTab(3) },
+                isSelected = currentTab == 4,
+                onClick = { onSelectTab(4) },
                 testTag = "nav_settings"
             )
         }

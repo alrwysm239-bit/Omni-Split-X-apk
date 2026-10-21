@@ -18,6 +18,9 @@ import com.example.util.ArchiveExtractor
 import com.example.util.AxmlParser
 import com.example.util.ExtractionProgress
 import com.example.util.PackageInstallerHelper
+import com.example.util.InstalledAppHelper
+import com.example.util.InstalledAppInfo
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -25,6 +28,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.util.zip.ZipEntry
@@ -93,6 +97,12 @@ class OmniSplitViewModel(application: Application) : AndroidViewModel(applicatio
 
     private val _signingConfig = MutableStateFlow(SigningConfig())
     val signingConfig: StateFlow<SigningConfig> = _signingConfig.asStateFlow()
+
+    private val _installedApps = MutableStateFlow<List<InstalledAppInfo>>(emptyList())
+    val installedApps: StateFlow<List<InstalledAppInfo>> = _installedApps.asStateFlow()
+
+    private val _isLoadingInstalledApps = MutableStateFlow(false)
+    val isLoadingInstalledApps: StateFlow<Boolean> = _isLoadingInstalledApps.asStateFlow()
 
     private var extractionJob: Job? = null
 
@@ -469,6 +479,73 @@ class OmniSplitViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             historyDao.clearAll()
             _toastMessage.value = if (_isArabic.value) "تم مسح السجل بالكامل." else "History cleared."
+        }
+    }
+
+    fun loadInstalledApps() {
+        viewModelScope.launch {
+            _isLoadingInstalledApps.value = true
+            try {
+                val list = withContext(Dispatchers.IO) {
+                    InstalledAppHelper.getInstalledApps(getApplication())
+                }
+                _installedApps.value = list
+            } catch (e: Exception) {
+                _toastMessage.value = "Failed to load apps: ${e.localizedMessage}"
+            } finally {
+                _isLoadingInstalledApps.value = false
+            }
+        }
+    }
+
+    fun convertInstalledApp(appInfo: InstalledAppInfo) {
+        if (extractionJob?.isActive == true) return
+
+        extractionJob = viewModelScope.launch {
+            try {
+                val destDir = outputDirectory
+                val resultApk = withContext(Dispatchers.IO) {
+                    InstalledAppHelper.convertInstalledApp(
+                        context = getApplication(),
+                        appInfo = appInfo,
+                        destinationDir = destDir,
+                        signingConfig = _signingConfig.value
+                    ) { progressUpdate ->
+                        _progress.value = progressUpdate
+                    }
+                }
+
+                // Add to history
+                val historyItem = HistoryItem(
+                    fileName = "${appInfo.appName}.apk",
+                    packageName = appInfo.packageName,
+                    versionName = appInfo.versionName,
+                    versionCode = appInfo.versionCode,
+                    fileSize = appInfo.totalSizeBytes,
+                    fileType = if (appInfo.isSplit) "SPLIT_APP" else "APK",
+                    architecture = "universal",
+                    splitCount = appInfo.splitCount,
+                    isStandalone = true,
+                    hasPairIp = false,
+                    pairIpDetails = "Cleaned & Merged",
+                    outputPath = resultApk.absolutePath,
+                    status = "SUCCESS"
+                )
+                withContext(Dispatchers.IO) {
+                    historyDao.insert(historyItem)
+                }
+
+                refreshExtractedFiles()
+                _toastMessage.value = if (_isArabic.value) {
+                    "تم تحويل ودمج تطبيق ${appInfo.appName} إلى APK جاهز للتثبيت بنجاح!"
+                } else {
+                    "Successfully converted ${appInfo.appName} to standalone signed APK!"
+                }
+            } catch (e: Exception) {
+                _toastMessage.value = "Error: ${e.localizedMessage}"
+            } finally {
+                _progress.value = null
+            }
         }
     }
 

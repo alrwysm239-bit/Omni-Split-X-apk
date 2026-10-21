@@ -21,6 +21,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.PlayArrow
@@ -150,12 +151,32 @@ fun HomeScreen(
             }
         )
 
-        // Demo sample quick loader pill
+        // Quick actions: Installed Apps & Sample Demo
         if (analysis == null && !isAnalyzing) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
             ) {
+                OutlinedButton(
+                    onClick = { viewModel.setTab(1) },
+                    shape = RoundedCornerShape(20.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.Transparent)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Android,
+                        contentDescription = null,
+                        tint = NeonGreen,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (isArabic) "تطبيقات الجهاز والنظام" else "Installed Apps",
+                        color = NeonGreen,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
                 OutlinedButton(
                     onClick = { viewModel.loadSamplePackage() },
                     shape = RoundedCornerShape(20.dp),
@@ -169,7 +190,7 @@ fun HomeScreen(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = if (isArabic) "تجربة حزمة XAPK تجريبية" else "Load Sample XAPK Demo",
+                        text = if (isArabic) "حزمة تجريبية" else "Load Demo",
                         color = NeonCyan,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold
