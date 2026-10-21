@@ -73,4 +73,8 @@
     <string name="safe_storage_desc">Verify free disk space prior to beginning large archive decompression</string>
     <string name="about_title">About Omni Split X</string>
     <string name="about_desc">High-performance Anti-Split Toolkit for Android. Converts, extracts, and installs XAPK, APKS, and split archives with zero memory blow-up.</string>
+    <string name="auto_clean_and_sign">Auto Clean &amp; Sign</string>
+    <string name="auto_clean_and_sign_desc">Removes split attributes, cleans vending metadata, resets application class, and executes 4B/4KB ZipAlign and V1/V2/V3 signing to prevent "App not installed" errors.</string>
+    <string name="conflicting_app_warning">Warning: This application is already installed on your device with a different signature. To avoid the "App not installed" error, you must uninstall the existing version first.</string>
+    <string name="uninstall_conflicting_app">Uninstall Existing App Now</string>
 </resources>

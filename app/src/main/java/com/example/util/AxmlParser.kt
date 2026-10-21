@@ -332,57 +332,10 @@ object AxmlParser {
     )
 
     /**
-     * Sanitizes binary AndroidManifest.xml (AXML) for merged APKs by neutralizing
-     * split declarations (such as isSplitRequired, requiredSplitTypes, and com.android.vending.splits)
-     * and PairIP application/activity bindings.
-     * Because target strings have identical lengths, offsets and chunk lengths remain 100% valid.
+     * Sanitizes binary AndroidManifest.xml (AXML) for merged APKs using [ManifestCleaner].
      */
     fun sanitizeSplitManifest(manifestBytes: ByteArray): ByteArray {
-        val result = manifestBytes.copyOf()
-        wipeSplitResourceIds(result)
-
-        val replacements = listOf(
-            // 1. Play Store split requirements and vending metadata
-            "com.android.vending.splits.required" to "com.android.vending.splits.merged__",
-            "com.android.vending.derived.apk.id"  to "com.android.disabled.apk.id_______",
-            "com.android.vending.splits"          to "com.android.vending.merged",
-            "com.android.stamp.source"            to "com.android.stmp.source_",
-            "com.android.stamp.type"              to "com.android.stmp.type_",
-
-            // 2. Split attribute declarations and composite values
-            "requiredSplitTypes" to "__req_SplitTypes__",
-            "isSplitRequired"    to "isSplitDisabled",
-            "isFeatureSplit"     to "__isFeatSplit_",
-            "configForSplit"     to "__cfgForSplit_",
-            "isolatedSplits"     to "__isolated_spt",
-            "splitTypes"         to "__sptTypes",
-            "base__abi,base__density" to "base_uni,base_density_",
-            "base__density"      to "base_density_",
-            "base__abi"          to "base_uni_",
-            "split"              to "__spt",
-
-            // 3. PairIP / Psirip protections, application class, and license checks
-            "com.pairip.application.Application"            to "com.disip.app.DisabledApplication_",
-            "com.pairip.licensecheck.LicenseActivity"        to "com.disabled.licchk.DisabledActivity___",
-            "com.pairip.licensecheck.LicenseContentProvider" to "com.disabled.licchk.DisabledContentProvider___",
-            "com.pairip.licensecheck"                       to "com.disabled.lic_check_",
-            "com.pairip"                                    to "com.disip_",
-            "pairip"                                        to "disrip",
-            "psirip"                                        to "disrip"
-        )
-
-        for ((target, replacement) in replacements) {
-            // 1. Check and replace UTF-8 sequence
-            val targetUtf8 = target.toByteArray(Charsets.UTF_8)
-            val replaceUtf8 = replacement.toByteArray(Charsets.UTF_8)
-            replaceSequence(result, targetUtf8, replaceUtf8)
-
-            // 2. Check and replace UTF-16LE sequence
-            val targetUtf16 = target.toByteArray(Charsets.UTF_16LE)
-            val replaceUtf16 = replacement.toByteArray(Charsets.UTF_16LE)
-            replaceSequence(result, targetUtf16, replaceUtf16)
-        }
-        return result
+        return ManifestCleaner.cleanManifest(manifestBytes)
     }
 
     private fun wipeSplitResourceIds(bytes: ByteArray) {

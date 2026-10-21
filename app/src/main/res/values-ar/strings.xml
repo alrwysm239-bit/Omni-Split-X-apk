@@ -74,4 +74,8 @@
     <string name="safe_storage_desc">التحقق من توفر مساحة كافية على الذاكرة قبل بدء فك الضغط</string>
     <string name="about_title">حول Omni Split X</string>
     <string name="about_desc">أداة احترافية للتعامل مع حزم XAPK و APKS و ZIP المقسمة وتحويلها وتثبيتها بكفاءة وسرعة فائقة.</string>
+    <string name="auto_clean_and_sign">التنظيف والتوقيع التلقائي</string>
+    <string name="auto_clean_and_sign_desc">مسح خصائص التجزئة، إزالة وسوم vending.splits، ترجيع كلاس Application للافتراضي، ومحاذاة ZipAlign وتوقيع V1/V2/V3 لمنع خطأ "التطبيق ليس مثبتاً".</string>
+    <string name="conflicting_app_warning">تنبيه: هذا التطبيق مثبت مسبقاً على جهازك بتوقيع مختلف! لمنع ظهور خطأ "التطبيق ليس مثبتاً"، يجب إلغاء تثبيت النسخة القديمة أولاً.</string>
+    <string name="uninstall_conflicting_app">إلغاء تثبيت النسخة الحالية الآن</string>
 </resources>

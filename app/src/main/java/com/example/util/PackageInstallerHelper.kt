@@ -102,6 +102,33 @@ object PackageInstallerHelper {
     }
 
     /**
+     * Checks if a package with [packageName] is currently installed on the device.
+     */
+    fun isPackageInstalled(context: Context, packageName: String): Boolean {
+        return try {
+            context.packageManager.getPackageInfo(packageName, 0)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Prompts the user to uninstall an existing conflicting package to avoid "App not installed" errors.
+     */
+    fun promptUninstallPackage(context: Context, packageName: String) {
+        try {
+            val intent = Intent(Intent.ACTION_DELETE).apply {
+                data = Uri.parse("package:$packageName")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    /**
      * Shares an APK file or extracted package.
      */
     fun shareApk(context: Context, file: File) {

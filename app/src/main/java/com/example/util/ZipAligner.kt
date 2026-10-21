@@ -1,26 +1,33 @@
 package com.example.util
 
 import java.io.BufferedOutputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
+import java.util.zip.CRC32
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 
 /**
  * Robust 4-byte and 4096-byte ZipAligner for Android APKs.
- * Aligns uncompressed (STORED) entries and native libraries (.so)
- * to ensure maximum compatibility with Android's PackageParser and mmap.
+ *
+ * Implements Android SDK-compliant zipalign:
+ * 1. Aligns all uncompressed (STORED) entries to 4-byte boundaries.
+ * 2. Aligns all shared native libraries (.so) to 4096-byte (4KB) page boundaries
+ *    for efficient mmap execution on 64-bit and 32-bit Android runtimes.
+ * 3. Enforces uncompressed STORED format on resources.arsc (which must never be compressed
+ *    in modern Android APKs to avoid "App not installed" errors).
+ * 4. Cleans out existing signature files from META-INF to prepare for pristine V1/V2/V3 signing.
  */
 object ZipAligner {
 
-    private const val DEFAULT_ALIGNMENT = 4
-    private const val PAGE_ALIGNMENT = 4096 // 4KB page alignment for .so libraries
+    const val DEFAULT_ALIGNMENT = 4
+    const val PAGE_ALIGNMENT = 4096 // 4KB page alignment for .so libraries
 
     /**
      * Performs 4-byte and 4096-byte alignment on [inputApk], writing the result to [outputApk].
-     * Strips existing META-INF signatures to prepare for clean re-signing.
      *
      * @return true if alignment succeeded and [outputApk] was created.
      */
@@ -48,34 +55,56 @@ object ZipAligner {
                         continue
                     }
 
+                    val isArsc = name.equals("resources.arsc", ignoreCase = true)
+                    val isNativeLib = name.endsWith(".so", ignoreCase = true)
+                    val isStoredOriginally = entry.method == ZipEntry.STORED
+
+                    // resources.arsc MUST be STORED (uncompressed) in production APKs
+                    val shouldBeStored = isStoredOriginally || isArsc
+
                     val newEntry = ZipEntry(name).apply {
                         comment = entry.comment
                         time = entry.time
                     }
 
-                    val isStored = entry.method == ZipEntry.STORED
-                    val isNativeLib = name.endsWith(".so", ignoreCase = true)
-
-                    if (isStored) {
+                    val entryBytes: ByteArray?
+                    if (shouldBeStored) {
                         newEntry.method = ZipEntry.STORED
-                        newEntry.size = entry.size
-                        newEntry.compressedSize = entry.compressedSize
-                        newEntry.crc = entry.crc
 
+                        // Read bytes to compute exact CRC and size if converting or if originally stored
+                        val baos = ByteArrayOutputStream()
+                        zipIn.getInputStream(entry).use { it.copyTo(baos, 64 * 1024) }
+                        entryBytes = baos.toByteArray()
+
+                        val crcCalculator = CRC32()
+                        crcCalculator.update(entryBytes)
+
+                        newEntry.size = entryBytes.size.toLong()
+                        newEntry.compressedSize = entryBytes.size.toLong()
+                        newEntry.crc = crcCalculator.value
+
+                        // Compute alignment padding
                         val alignment = if (isNativeLib) PAGE_ALIGNMENT else DEFAULT_ALIGNMENT
-                        val headerSize = 30 + name.toByteArray(Charsets.UTF_8).size
+                        val fileNameBytes = name.toByteArray(Charsets.UTF_8)
+                        val headerSize = 30 + fileNameBytes.size
                         val dataOffsetWithoutExtra = countingOut.bytesWritten + headerSize
                         val padding = ((alignment - (dataOffsetWithoutExtra % alignment)) % alignment).toInt()
+
                         if (padding > 0) {
                             newEntry.extra = ByteArray(padding)
                         }
                     } else {
                         newEntry.method = ZipEntry.DEFLATED
+                        entryBytes = null
                     }
 
                     zipOut.putNextEntry(newEntry)
-                    zipIn.getInputStream(entry).use { inStream ->
-                        inStream.copyTo(zipOut, 64 * 1024)
+                    if (entryBytes != null) {
+                        zipOut.write(entryBytes)
+                    } else {
+                        zipIn.getInputStream(entry).use { inStream ->
+                            inStream.copyTo(zipOut, 64 * 1024)
+                        }
                     }
                     zipOut.closeEntry()
                 }

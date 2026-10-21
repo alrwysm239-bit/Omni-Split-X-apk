@@ -66,6 +66,14 @@ class OmniSplitViewModel(application: Application) : AndroidViewModel(applicatio
     private val _autoRemovePairIp = MutableStateFlow(true)
     val autoRemovePairIp: StateFlow<Boolean> = _autoRemovePairIp.asStateFlow()
 
+    // Primary Auto Clean & Sign Toggle as requested: "التنظيف والتوقيع التلقائي"
+    private val _autoCleanAndSign = MutableStateFlow(true)
+    val autoCleanAndSign: StateFlow<Boolean> = _autoCleanAndSign.asStateFlow()
+
+    // Conflict detection for preventing "App not installed" (INSTALL_FAILED_UPDATE_INCOMPATIBLE)
+    private val _conflictingPackageInstalled = MutableStateFlow(false)
+    val conflictingPackageInstalled: StateFlow<Boolean> = _conflictingPackageInstalled.asStateFlow()
+
     private val _showPairIpDialog = MutableStateFlow(false)
     val showPairIpDialog: StateFlow<Boolean> = _showPairIpDialog.asStateFlow()
 
@@ -143,6 +151,31 @@ class OmniSplitViewModel(application: Application) : AndroidViewModel(applicatio
         val current = _analysis.value
         if (current != null && _selectedUri.value != null) {
             onFileSelected(_selectedUri.value!!, current.fileName, current.fileSize)
+        }
+    }
+
+    fun toggleAutoCleanAndSign(enabled: Boolean) {
+        _autoCleanAndSign.value = enabled
+        if (enabled) {
+            _autoRemovePairIp.value = true
+            _signingConfig.value = _signingConfig.value.copy(
+                isAutoSigning = true,
+                v1Enabled = true,
+                v2Enabled = true,
+                v3Enabled = true
+            )
+        }
+    }
+
+    fun uninstallConflictingPackage() {
+        val pkg = _analysis.value?.packageName
+        if (!pkg.isNullOrBlank()) {
+            PackageInstallerHelper.promptUninstallPackage(getApplication(), pkg)
+            _toastMessage.value = if (_isArabic.value) {
+                "تم فتح نافذة إلغاء تثبيت $pkg. بعد الإلغاء يمكنك تثبيت الحزمة المحولة فوراً."
+            } else {
+                "Uninstall prompt opened for $pkg. After uninstallation, you can install the converted APK."
+            }
         }
     }
 
@@ -304,6 +337,7 @@ class OmniSplitViewModel(application: Application) : AndroidViewModel(applicatio
                     scanPairIp = _scanPairIp.value
                 )
                 _analysis.value = result
+                _conflictingPackageInstalled.value = PackageInstallerHelper.isPackageInstalled(getApplication(), result.packageName)
 
                 getApplication<Application>().contentResolver.openInputStream(uri)?.use { stream ->
                     val strings = ArchiveExtractor.extractManifestStringsFromZip(stream)

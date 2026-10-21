@@ -287,19 +287,35 @@ object ArchiveExtractor {
                                 )) {
                                 continue
                             }
-                            if (name.contains("pairip", ignoreCase = true) || name.contains("psirip", ignoreCase = true)) {
+
+                            // Sanitizer: Filter out temp assets and verify native libraries
+                            if (!PackageSanitizer.shouldKeepAsset(name, entry.size)) {
                                 continue
                             }
 
-                            outZip.putNextEntry(ZipEntry(name))
                             if (name.equals("AndroidManifest.xml", ignoreCase = true)) {
                                 val manifestBytes = inZip.getInputStream(entry).use { it.readBytes() }
-                                val sanitizedBytes = AxmlParser.sanitizeSplitManifest(manifestBytes)
+                                val sanitizedBytes = ManifestCleaner.cleanManifest(manifestBytes)
+                                outZip.putNextEntry(ZipEntry(name))
                                 outZip.write(sanitizedBytes)
+                                outZip.closeEntry()
+                            } else if (name.equals("resources.arsc", ignoreCase = true)) {
+                                val arscBytes = inZip.getInputStream(entry).use { it.readBytes() }
+                                val crcVal = java.util.zip.CRC32().apply { update(arscBytes) }.value
+                                val storedEntry = ZipEntry(name).apply {
+                                    method = ZipEntry.STORED
+                                    size = arscBytes.size.toLong()
+                                    compressedSize = arscBytes.size.toLong()
+                                    crc = crcVal
+                                }
+                                outZip.putNextEntry(storedEntry)
+                                outZip.write(arscBytes)
+                                outZip.closeEntry()
                             } else {
+                                outZip.putNextEntry(ZipEntry(name))
                                 inZip.getInputStream(entry).use { it.copyTo(outZip, BUFFER_SIZE) }
+                                outZip.closeEntry()
                             }
-                            outZip.closeEntry()
                         }
                     }
                 }
@@ -358,19 +374,35 @@ object ArchiveExtractor {
                                         )) {
                                         continue
                                     }
-                                    if (name.contains("pairip", ignoreCase = true) || name.contains("psirip", ignoreCase = true)) {
+
+                                    // Filter unwanted / cache assets
+                                    if (!PackageSanitizer.shouldKeepAsset(name, entry.size)) {
                                         continue
                                     }
 
-                                    outZip.putNextEntry(ZipEntry(name))
                                     if (name.equals("AndroidManifest.xml", ignoreCase = true)) {
                                         val manifestBytes = inZip.getInputStream(entry).use { it.readBytes() }
-                                        val sanitizedBytes = AxmlParser.sanitizeSplitManifest(manifestBytes)
+                                        val sanitizedBytes = ManifestCleaner.cleanManifest(manifestBytes)
+                                        outZip.putNextEntry(ZipEntry(name))
                                         outZip.write(sanitizedBytes)
+                                        outZip.closeEntry()
+                                    } else if (name.equals("resources.arsc", ignoreCase = true)) {
+                                        val arscBytes = inZip.getInputStream(entry).use { it.readBytes() }
+                                        val crcVal = java.util.zip.CRC32().apply { update(arscBytes) }.value
+                                        val storedEntry = ZipEntry(name).apply {
+                                            method = ZipEntry.STORED
+                                            size = arscBytes.size.toLong()
+                                            compressedSize = arscBytes.size.toLong()
+                                            crc = crcVal
+                                        }
+                                        outZip.putNextEntry(storedEntry)
+                                        outZip.write(arscBytes)
+                                        outZip.closeEntry()
                                     } else {
+                                        outZip.putNextEntry(ZipEntry(name))
                                         inZip.getInputStream(entry).use { it.copyTo(outZip, BUFFER_SIZE) }
+                                        outZip.closeEntry()
                                     }
-                                    outZip.closeEntry()
                                 }
                             }
                         }
@@ -389,7 +421,7 @@ object ArchiveExtractor {
                             bytesProcessed = 0,
                             totalBytes = totalBytes,
                             currentFileName = "Merging split APKs...",
-                            stage = "Merging ${apkEntries.size} split APKs into universal APK & removing PairIP/Psirip..."
+                            stage = "Merging ${apkEntries.size} split APKs into universal APK with Manifest Cleaner & ZipAlign..."
                         )
                     )
 
@@ -427,21 +459,36 @@ object ArchiveExtractor {
                                         )) {
                                         continue
                                     }
-                                    if (name.contains("pairip", ignoreCase = true) || name.contains("psirip", ignoreCase = true)) {
+
+                                    // Filter temporary/junk assets
+                                    if (!PackageSanitizer.shouldKeepAsset(name, entry.size)) {
                                         continue
                                     }
 
                                     if (writtenEntries.add(name)) {
-                                        val isManifest = name.equals("AndroidManifest.xml", ignoreCase = true)
-                                        outZip.putNextEntry(ZipEntry(name))
-                                        if (isManifest) {
+                                        if (name.equals("AndroidManifest.xml", ignoreCase = true)) {
                                             val manifestBytes = baseZip.getInputStream(entry).use { it.readBytes() }
-                                            val sanitizedBytes = AxmlParser.sanitizeSplitManifest(manifestBytes)
+                                            val sanitizedBytes = ManifestCleaner.cleanManifest(manifestBytes)
+                                            outZip.putNextEntry(ZipEntry(name))
                                             outZip.write(sanitizedBytes)
+                                            outZip.closeEntry()
+                                        } else if (name.equals("resources.arsc", ignoreCase = true)) {
+                                            val arscBytes = baseZip.getInputStream(entry).use { it.readBytes() }
+                                            val crcVal = java.util.zip.CRC32().apply { update(arscBytes) }.value
+                                            val storedEntry = ZipEntry(name).apply {
+                                                method = ZipEntry.STORED
+                                                size = arscBytes.size.toLong()
+                                                compressedSize = arscBytes.size.toLong()
+                                                crc = crcVal
+                                            }
+                                            outZip.putNextEntry(storedEntry)
+                                            outZip.write(arscBytes)
+                                            outZip.closeEntry()
                                         } else {
+                                            outZip.putNextEntry(ZipEntry(name))
                                             baseZip.getInputStream(entry).use { it.copyTo(outZip, BUFFER_SIZE) }
+                                            outZip.closeEntry()
                                         }
-                                        outZip.closeEntry()
                                     }
                                 }
                             }
@@ -449,7 +496,7 @@ object ArchiveExtractor {
                             try { baseTemp.delete() } catch (_: Exception) {}
                         }
 
-                        // 2. Process Split APKs with safe dex index assignment
+                        // 2. Process Split APKs with safe dex index assignment and asset/library sanitization
                         val maxBaseDex = writtenEntries.mapNotNull { entryName ->
                             when {
                                 entryName.equals("classes.dex", ignoreCase = true) -> 1
@@ -480,9 +527,21 @@ object ArchiveExtractor {
                                         val entry = splitEntries.nextElement()
                                         var name = entry.name
                                         if (name.equals("AndroidManifest.xml", ignoreCase = true)) continue
+                                        if (name.equals("resources.arsc", ignoreCase = true)) continue
                                         if (name.startsWith("META-INF/")) continue
-                                        if (name.contains("pairip", ignoreCase = true) || name.contains("psirip", ignoreCase = true)) {
+
+                                        // Sanitizer: Filter out temp assets
+                                        if (!PackageSanitizer.shouldKeepAsset(name, entry.size)) {
                                             continue
+                                        }
+
+                                        // Sanitizer: Check native library validity if under lib/
+                                        if (name.startsWith("lib/") && name.endsWith(".so", ignoreCase = true)) {
+                                            val headerBytes = ByteArray(4)
+                                            val bytesRead = splitZip.getInputStream(entry).use { it.read(headerBytes) }
+                                            if (bytesRead < 4 || !PackageSanitizer.isValidNativeLibrary(name, headerBytes, entry.size)) {
+                                                continue // Skip corrupt or non-ELF native library
+                                            }
                                         }
 
                                         if (name.matches(Regex("classes\\d*\\.dex", RegexOption.IGNORE_CASE))) {

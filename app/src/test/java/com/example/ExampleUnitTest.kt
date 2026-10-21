@@ -144,4 +144,30 @@ class ExampleUnitTest {
         assertTrue(resultStr.contains("__req_SplitTypes__"))
         assertTrue(resultStr.contains("__sptTypes"))
     }
+
+    @Test
+    fun testPackageSanitizerAssets() {
+        assertTrue(com.example.util.PackageSanitizer.shouldKeepAsset("assets/game_data.bin", 1024L))
+        assertFalse(com.example.util.PackageSanitizer.shouldKeepAsset("assets/temp/temp.dat", 500L))
+        assertFalse(com.example.util.PackageSanitizer.shouldKeepAsset("assets/.cache/cache.tmp", 200L))
+        assertFalse(com.example.util.PackageSanitizer.shouldKeepAsset("assets/.DS_Store", 100L))
+    }
+
+    @Test
+    fun testPackageSanitizerNativeLibs() {
+        val validElfHeader = byteArrayOf(0x7F.toByte(), 0x45.toByte(), 0x4C.toByte(), 0x46.toByte())
+        val corruptHeader = byteArrayOf(0x00, 0x00, 0x00, 0x00)
+
+        assertTrue(com.example.util.PackageSanitizer.isValidNativeLibrary("lib/arm64-v8a/libtest.so", validElfHeader, 2048L))
+        assertFalse(com.example.util.PackageSanitizer.isValidNativeLibrary("lib/arm64-v8a/libtest.so", corruptHeader, 2048L))
+        assertFalse(com.example.util.PackageSanitizer.isValidNativeLibrary("lib/unknown_arch/libtest.so", validElfHeader, 2048L))
+    }
+
+    @Test
+    fun testApplicationClassResetInManifestCleaner() {
+        val sample = "com.google.android.play.core.splitcompat.SplitCompatApplication".toByteArray(Charsets.UTF_8)
+        val cleaned = com.example.util.ManifestCleaner.cleanManifest(sample)
+        val result = String(cleaned, Charsets.UTF_8)
+        assertTrue(result.startsWith("android.app.Application"))
+    }
 }

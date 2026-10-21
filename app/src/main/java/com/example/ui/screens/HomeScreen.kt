@@ -5,6 +5,7 @@ import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,15 +23,22 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Android
+import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -59,6 +67,7 @@ import com.example.ui.theme.NeonCyan
 import com.example.ui.theme.NeonGreen
 import com.example.ui.theme.NeonMagenta
 import com.example.ui.theme.TextMuted
+import com.example.ui.theme.TextSecondary
 import com.example.viewmodel.OmniSplitViewModel
 import java.util.Locale
 
@@ -76,6 +85,8 @@ fun HomeScreen(
     val progress by viewModel.progress.collectAsState()
     val scanPairIp by viewModel.scanPairIp.collectAsState()
     val autoRemovePairIp by viewModel.autoRemovePairIp.collectAsState()
+    val autoCleanAndSign by viewModel.autoCleanAndSign.collectAsState()
+    val conflictingPackageInstalled by viewModel.conflictingPackageInstalled.collectAsState()
     val showPairIpDialog by viewModel.showPairIpDialog.collectAsState()
     val selectedFileName by viewModel.selectedFileName.collectAsState()
     val selectedFileSize by viewModel.selectedFileSize.collectAsState()
@@ -236,6 +247,156 @@ fun HomeScreen(
             version = versionDisplay,
             actualFileSize = actualSizeDisplay
         )
+
+        // Conflict Alert Banner (to prevent "App not installed" error)
+        if (conflictingPackageInstalled && analysis?.packageName != null) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = NeonAmber.copy(alpha = 0.12f)),
+                border = BorderStroke(1.dp, NeonAmber)
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Warning, contentDescription = null, tint = NeonAmber, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (isArabic) "تحذير: تعارض التثبيت والتوقيع" else "Installation Conflict Warning",
+                            color = NeonAmber,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.5.sp
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = if (isArabic)
+                            "الحزمة (${analysis?.packageName}) مثبتة مسبقاً على هذا الجهاز بتوقيع مختلف. نظام الأندرويد يرفض التثبيت برسالة 'التطبيق ليس مثبتاً' عند اختلاف التوقيع. يرجى إلغاء تثبيت النسخة الحالية لتثبيت النسخة المحولة مباشرة بدون مشاكل."
+                        else
+                            "Package (${analysis?.packageName}) is already installed on this device with a different signature. Android will reject the installation with 'App not installed' unless you uninstall the old version first.",
+                        color = Color(0xFFF0E6D2),
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Button(
+                        onClick = { viewModel.uninstallConflictingPackage() },
+                        colors = ButtonDefaults.buttonColors(containerColor = NeonAmber),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth().height(40.dp)
+                    ) {
+                        Icon(Icons.Default.DeleteSweep, contentDescription = null, tint = DarkBackground, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (isArabic) "إلغاء تثبيت النسخة القديمة الآن" else "Uninstall Old Version Now",
+                            color = DarkBackground,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            }
+        }
+
+        // Toggle Switch Card: "التنظيف والتوقيع التلقائي" (Auto Clean & Sign)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = DarkSurface),
+            border = BorderStroke(1.dp, if (autoCleanAndSign) NeonCyan.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.1f))
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .background(if (autoCleanAndSign) NeonCyan.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AutoFixHigh,
+                                contentDescription = null,
+                                tint = if (autoCleanAndSign) NeonCyan else TextMuted,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = if (isArabic) "التنظيف والتوقيع التلقائي" else "Auto Clean & Sign",
+                                color = if (autoCleanAndSign) NeonCyan else Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                            Text(
+                                text = if (autoCleanAndSign) {
+                                    if (isArabic) "مُفعل - جاهز للتثبيت على كافة إصدارات الأندرويد" else "Enabled - Ready for direct installation"
+                                } else {
+                                    if (isArabic) "مُعطل" else "Disabled"
+                                },
+                                color = if (autoCleanAndSign) NeonGreen else TextMuted,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+
+                    Switch(
+                        checked = autoCleanAndSign,
+                        onCheckedChange = { viewModel.toggleAutoCleanAndSign(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = NeonCyan,
+                            checkedTrackColor = NeonCyan.copy(alpha = 0.35f),
+                            uncheckedThumbColor = TextMuted,
+                            uncheckedTrackColor = DarkBackground
+                        )
+                    )
+                }
+
+                if (autoCleanAndSign) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 0.8.dp)
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        val bulletPoints = if (isArabic) listOf(
+                            "إزالة سمات التجزئة من المانفيست (requiredSplitTypes, splitTypes, isSplitRequired)",
+                            "إزالة وسوم com.android.vending.splits وطوابع التوزيع التجميعي",
+                            "ترجيع كلاس Application إلى android.app.Application عند التعارض",
+                            "تصفية مجلد assets ومطابقة وفحص ملفات lib/*.so لمعماريات المعالج",
+                            "تنفيذ محاذاة 4-byte ZipAlign وتوقيع رسمي بمخططات V1, V2, V3"
+                        ) else listOf(
+                            "Clean split attributes in manifest (requiredSplitTypes, isSplitRequired)",
+                            "Strip com.android.vending.splits metadata and distribution stamps",
+                            "Reset custom Application class to android.app.Application on conflict",
+                            "Filter temp assets and validate lib/*.so ELF binaries for all ABIs",
+                            "Execute 4-byte/4KB ZipAlign and official V1, V2, V3 APK signature schemes"
+                        )
+
+                        for (bullet in bulletPoints) {
+                            Row(verticalAlignment = Alignment.Top) {
+                                Text(
+                                    text = "✓",
+                                    color = NeonGreen,
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(end = 6.dp)
+                                )
+                                Text(
+                                    text = bullet,
+                                    color = TextSecondary,
+                                    fontSize = 11.sp,
+                                    lineHeight = 15.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         // Card 3: PairIP Inspector Card
         PairIpInspectorCard(
